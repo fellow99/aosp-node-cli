@@ -25,6 +25,7 @@
  *   node tools/provision.mjs --manifest-only <dir>      在 <dir>/node-bridge-tools/ 内生成 manifest.json
  *                                                       （build 步⑧ 调用；摘要算法与 --assets 单源）
  *   node tools/provision.mjs --version 26.13.0 --abi arm64-v8a ...
+ *   node tools/provision.mjs --lock <path> ...             指定 lock 文件（默认仓库根；CI fixture 门禁用）
  *   node tools/provision.mjs --allow-page-align-4k ...  仅门禁⑦降级 + 强制警告（bring-up 用）
  *
  * jniLibs 兄弟文件二分类（FR-001-033，规划 §6.1）：
@@ -363,8 +364,9 @@ function head4(fp) {
 // ── 主流程 ──────────────────────────────────────────────────────────────────
 
 function readLock() {
-  if (!fs.existsSync(LOCK_PATH)) throw new Error(`缺 ${LOCK_PATH}`);
-  return JSON.parse(fs.readFileSync(LOCK_PATH, 'utf8'));
+  const p = argOf('--lock') ? path.resolve(argOf('--lock')) : LOCK_PATH;
+  if (!fs.existsSync(p)) throw new Error(`缺 lock 文件：${p}`);
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
 function main() {

@@ -116,11 +116,20 @@ jobs:
       - name: synthetic fixture gates（TC-003-19 正样本 / 负样本判死；不依赖真实产物）
         run: |
           node tools/make-elf-fixture.mjs --out "$DIST/fixture-ok.so"
-          node tools/provision.mjs --inspect "$DIST/fixture-ok.so"
-          for b in interp align type machine needed; do
+          # fixture lock：active release 的 sha256/size 置为 fixture 实测值——⑤⑥ 走硬比对路径
+          # （lock=released 后无「仅记录」可依赖；顺带首次真正覆盖 ⑤⑥ 硬判）
+          node -e "
+            const fs = require('fs'), crypto = require('crypto');
+            const l = JSON.parse(fs.readFileSync('node-cli.lock.json', 'utf8'));
+            const buf = fs.readFileSync(process.env.DIST + '/fixture-ok.so');
+            for (const r of l.releases ?? []) { r.sha256 = crypto.createHash('sha256').update(buf).digest('hex'); r.size = buf.length; }
+            fs.writeFileSync(process.env.DIST + '/fixture.lock.json', JSON.stringify(l, null, 2));
+          "
+          node tools/provision.mjs --lock "$DIST/fixture.lock.json" --inspect "$DIST/fixture-ok.so"
+          for b in interp align type machine needed interpn; do
             node tools/make-elf-fixture.mjs --out "$DIST/fixture-$b.so" --broken "$b"
             code=0
-            node tools/provision.mjs --inspect "$DIST/fixture-$b.so" || code=$?
+            node tools/provision.mjs --lock "$DIST/fixture.lock.json" --inspect "$DIST/fixture-$b.so" || code=$?
             if [ "$code" -ne 2 ]; then
               echo "::error::broken=$b expected exit 2, got $code"
               exit 1
