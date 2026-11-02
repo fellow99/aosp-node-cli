@@ -1,6 +1,7 @@
 # 001-building 任务拆解
 
 > 对应：[spec.md](./spec.md) / [plan.md](./plan.md)。原则：代码本批全量落地；交叉编译本体验证留 CI（002）。
+> **勾选口径（C7）**：✅ = 代码落地且本地可测面已实测（语法门/dry-run/fixtures/真实 fetch/collect-only 全链）；标注「⬜ CI 首跑执行」的项 = 代码已落地但执行体在 ubuntu runner（NDK/make/strip）。
 
 ## T1 lock 扩展（单源钉选 + 壳白名单事实源）
 - [x] T1.1 `builtFrom.sourceTar`（version+url+sha256 空串）替换 `source` 描述串 — FR-001-001/004
