@@ -64,29 +64,42 @@ Terminal side (via node-pty):
 ## AAR contents
 
 ```
-jni/arm64-v8a/libnode_cli.so      # node CLI (exec-form PIE, 16KB aligned)
-assets/node-bridge-tools/npm/     # npm JS tree (pure data; provisioned in M1)
+jni/arm64-v8a/libnode_cli.so      # node CLI (exec-form PIE, 16KB aligned; the only ELF)
+jni/arm64-v8a/libnpm.so           # npm shell shim (sh): exec libnode_cli.so <tools>/npm/bin/npm-cli.js "$@"
+jni/arm64-v8a/libnpx.so           # npx shell shim (sh): entry npm/bin/npx-cli.js
+jni/arm64-v8a/libcorepack.so      # corepack shell shim (sh): corepack entry
+assets/node-bridge-tools/npm/     # npm JS tree (pruned deps/npm; pure data, materialized to filesDir on first run)
 assets/node-bridge-tools/corepack/
+assets/node-bridge-tools/manifest.json   # per-file sha256 + tree digest (generated/verified at provision time)
 ```
+
+- The shell shims give direct `npm` / `npx` / `corepack` commands via the `$HOME/bin` symlink
+  farm (plan §5/§7); `libc++_shared.so` is **never bundled** (provided by the paired node-runtime);
+- `META-INF/node-cli.properties`: version/ABI/size/sha256/paired-runtime metadata (written at
+  provision time).
 
 Requirements: `minSdk 24` · ABI `arm64-v8a`.
 
 ## How to build
 
-Binaries are **never committed** and never built by hand. 000-scaffold pins the interfaces
-and gates; the real cross-compile pipeline lands in **M1** in
-`.github/workflows/build-node-cli-android.yml` (currently a configuration-gate-only workflow).
+Binaries are **never committed** and never built by hand. Build scripts and gates are fully
+implemented (001-building); real cross-compilation runs on CI (tag `v<ver>` triggers the
+`build-android-arm64-v8a` job of `.github/workflows/build-node-cli-android.yml`;
+push/PR runs the configuration gate only).
 
 ```bash
-# 1) Fetch source (M1): official node-v<ver>.tar.xz, unmodified, sha256 recorded
+# 1) Fetch source: official node-v<ver>.tar.xz + SHASUMS256.txt verification chain, unmodified
 node scripts/fetch-node-cli-source.mjs --node 26.13.0 --out .dist/src
 
-# 2) Cross-compile (M1): android-configure WITHOUT --shared → make → strip
+# 2) Cross-compile: android_configure WITHOUT --shared + --with-intl=none → make → gates → strip
+#    → npm/corepack tree collection/pruning/manifest → shell shims (--dry-run prints the plan)
 bash scripts/build-node-cli-android.sh --node 26.13.0 --api 24 \
-  --src .dist/src/node-src --ndk "$ANDROID_NDK_HOME" --out build/out
+  --src .dist/src/node-src --ndk "$ANDROID_NDK_HOME" --out .dist/out
 
-# 3) Gates / provision
-node tools/provision.mjs --out node-cli/src/main/jniLibs --from build/out/libnode_cli.so
+# 3) Gates / provision (7 ELF gates + shim 5-criteria + assets staticness + manifest)
+node tools/provision.mjs --out node-cli/src/main/jniLibs --from .dist/out/libnode_cli.so
+node tools/provision.mjs --shims .dist/out
+node tools/provision.mjs --assets .dist/out
 node tools/provision.mjs --check
 ```
 

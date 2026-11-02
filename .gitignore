@@ -29,3 +29,6 @@ build/out/
 
 # OS
 .DS_Store
+
+# python bytecode
+__pycache__/

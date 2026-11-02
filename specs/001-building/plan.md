@@ -20,7 +20,7 @@
 |---|---|---|
 | 工具链（CI） | NDK r30（30.0.16248370，与 aosp-node-runtime 对齐线，规划 §3.2）+ clang（NDK 自带 LLVM，含 llvm-strip） | Node 26 / V8 14.6 需 clang≥19.1.0 ⬜ 首产实测 |
 | host 工具链 | build-essential（gcc/g++ 作 CC_host/CXX_host）、make、python3、xz | V8 host snapshot（mksnapshot）交叉编译必需（runtime 同款前置） |
-| 单源 | `node-v<ver>.tar.xz` + `SHASUMS256.txt` @ `https://nodejs.org/dist/v<ver>/` | URL 模板与 sha256 见 §3.1；含 `deps/npm`、`deps/corepack`（D6） |
+| 源 | `node-v<ver>.tar.xz` + `SHASUMS256.txt` @ `https://nodejs.org/dist/v<ver>/`（含 `deps/npm`，D6）；corepack 官方 tarball 单独钉版（v2.2：Node 26 树无 deps/corepack） | URL 模板与 sha256 见 §3.1 |
 | 运行时依赖 | `node:fs/path/crypto/url/child_process`（fetch/provision 零第三方）+ bash + NDK 工具 | CI 另需 curl/file/tar/xz |
 | 工作区 | `.dist/src`（源包+解压树）、`.dist/build`（编译树内 out/）、`.dist/out`（投放前产物） | `.gitignore` 已忽略 `.dist/` |
 
@@ -50,7 +50,8 @@
   "flags": "…",
   "patch": "none",                        // 或逐条登记（FR-001-013）
   "npm":      { "version": "", "path": "deps/npm", "fileCount": 0, "sha256": "" },
-  "corepack": { "version": "", "path": "deps/corepack", "fileCount": 0, "sha256": "" },
+  "corepackTar": { "version": "0.36.0", "url": "https://registry.npmjs.org/corepack/-/corepack-0.36.0.tgz", "sha256": "9128cfe…" },
+  "corepack": { "version": "", "path": "corepack", "fileCount": 0, "sha256": "" },   // 解包树摘要
   "shims": [],                            // [{name, sha256, size, entry}] ×3，draft 期占位
   "assetsManifest": { "fileCount": 0, "totalSha256": "" }
 }
@@ -78,7 +79,7 @@
 | ④ make | `make -j$(nproc)` → `out/Release/node`（默认目标，R3 ⬜ 核实闭包） | 失败 ⇒ exit 2 |
 | ⑤ 形态校验 | `file` + provision `--inspect`：ET_DYN / PT_INTERP 恰 1 = linker64 / LOAD align 全 16384（FR-001-014） | 不过 ⇒ exit 2（不 strip、不投放） |
 | ⑥ strip | `llvm-strip --strip-unneeded` → `$OUT/libnode_cli.so`（FR-001-015） | 输出名取自 lock `active.name` |
-| ⑦ 树收集 | `deps/npm` → `$OUT/node-bridge-tools/npm/`、`deps/corepack` → `$OUT/node-bridge-tools/corepack/`；剪枝清单（§3.4）+ 剔除计数登记 | 入口文件（npm-cli.js/npx-cli.js/corepack 入口）缺失 ⇒ exit 2 |
+| ⑦ 树收集 | `deps/npm` → `$OUT/node-bridge-tools/npm/`、corepack 钉版解包树（`--corepack-src`，默认 `$(dirname SRC)/corepack`）→ `$OUT/node-bridge-tools/corepack/`；剪枝清单（§3.4）+ 剔除计数登记 | 入口文件（npm-cli.js/npx-cli.js/corepack 入口）缺失 ⇒ exit 2 |
 | ⑧ manifest | 逐文件 sha256 + fileCount + 总 sha256（树摘要）→ `$OUT/node-bridge-tools/manifest.json` | FR-001-021 |
 | ⑨ 壳脚本 | 三件 sh 壳写入 `$OUT/`（§3.3 模板）+ `chmod +x` | FR-001-022 |
 | ⑩ 元数据 | `BUILD-METADATA.txt` + 复制 FETCH-METADATA.json（FR-001-023） | 版本/NDK/flags/patch/UTC |
@@ -147,7 +148,7 @@ BUILD-METADATA」，**不做内容改写**（C1：剪枝是复制时的文件级
 1. **顺序**：lock 扩展 → fetch 实现 → build 脚本（③–⑥ CI 执行体 + ⑦⑧⑨ 本地可测）→
    provision 扩展 →（CI 接线归 002）。
 2. **本地可测/不可测切分**：本地可测 = fetch（真实下载 node tar.xz + SHASUMS256 校验）+
-   ⑦⑧⑨（用官方源码树真实 `deps/npm`/`deps/corepack` 做输入）+ provision 全链（合成
+   ⑦⑧⑨（用官方源码树真实 `deps/npm` + corepack 钉版解包树做输入）+ provision 全链（合成
    fixtures：ELF fixture 复用 000 的合成 PIE 思路 + 伪壳负样本）+ build `--dry-run`；
    不可测 = ①–⑥ 真实编译（CI ⬜，R1–R3）。
 3. **错误处理**：外部命令失败 ⇒ 定位到步号报错；门禁/校验类 exit 2、用法/IO exit 1
@@ -167,7 +168,7 @@ BUILD-METADATA」，**不做内容改写**（C1：剪枝是复制时的文件级
 | # | 项 | 处置 |
 |---|---|---|
 | 1 | 裸 configure 首轮试编的 patch 子集与参数注入方式（规划 R1/R2 ⬜） | build 脚本 `--apply-patch` 显式开关 + 逐条登记；CI 首轮（002）试编后回写 |
-| 2 | npm/corepack 树入口路径与剪枝清单（规划 R5 ⬜） | ⑦ 步入口存在性硬校验（缺 ⇒ exit 2）；清单以实际树定稿后回写 lock/SPECS |
+| 2 | npm/corepack 树入口路径与剪枝清单（规划 R5 ✅ 已实测拍板：npm/bin/npm-cli.js、npm/bin/npx-cli.js、corepack/dist/corepack.js） | 已写死进壳脚本模板与 lock `matrix.shellShims`；剪枝清单登记 BUILD-METADATA |
 | 3 | `.wasm` 文件的静态性放行（规划 §6 ⬜） | 静态性检查先按「ELF magic 拒」实现；`.wasm` 首次出现真实样本时拍板并登记 |
 | 4 | 单源 sha256 钉选值本批不填（C6） | lock 留空串 + fetch 拒绝空值（`--allow-unpinned --shasums` 例外通道）；首产前维护者按官方 SHASUMS256.txt 回写 |
 | 5 | `assets/node-bridge-tools/` 落位与 .gitignore（C3） | 本批在 .gitignore 增加 assets 忽略行（投放产物不入库） |

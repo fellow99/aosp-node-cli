@@ -2,8 +2,8 @@
 /*
  * tools/provision.mjs —— node-cli 投放与 ELF 门禁（exec 型 profile）
  *
- * 唯一事实源是仓库根的 `node-cli.lock.json`（版本 + 大小 + SHA-256 + 门禁 + 出处）。
- * 二进制不入库：本工具把 CI 产物幂等投放进模块 jniLibs。
+ * 唯一事实源是仓库根的 `node-cli.lock.json`（版本 + 大小 + SHA-256 + 门禁 + 出处 + 壳白名单）。
+ * 二进制不入库：本工具把 CI 产物投放进模块 jniLibs / assets。
  *
  * 与 aosp-node-pty/tools/provision.mjs 同一套极简 ELF64 解析（退出码 0/2/1 同纪律），
  * 但门禁是 **exec 型 profile**，与 dlopen 库门禁的三处相反/差异：
@@ -15,11 +15,22 @@
  *   4. 打包：useLegacyPackaging=true——exec 要求物理落盘 nativeLibraryDir
  *      （targetSdk≥29 SELinux 禁止从可写数据目录 exec；不落盘则 execve ENOENT）。
  *
- * 用法：
- *   node tools/provision.mjs --check
- *   node tools/provision.mjs --out node-cli/src/main/jniLibs --from <libnode_cli.so>
- *   node tools/provision.mjs --inspect <libnode_cli.so>
+ * 命令矩阵（000-scaffold 契约 + 001-building 扩展）：
+ *   node tools/provision.mjs --check                    校验已投放产物（ELF 门禁 + 壳白名单应有尽有）
+ *   node tools/provision.mjs --inspect <file>           打印任意候选文件的七项门禁报告
+ *   node tools/provision.mjs --out <dir> --from <file>  门禁全过后投放主件 + 写 META-INF 元数据
+ *   node tools/provision.mjs --shims <dir>              壳五判据校验 + 投放三壳（FR-001-033/034/035）
+ *   node tools/provision.mjs --assets <dir> [--assets-mode stage|verify]
+ *                                                       npm/corepack 树投放/复验 + manifest（FR-001-030…032）
+ *   node tools/provision.mjs --manifest-only <dir>      在 <dir>/node-bridge-tools/ 内生成 manifest.json
+ *                                                       （build 步⑧ 调用；摘要算法与 --assets 单源）
  *   node tools/provision.mjs --version 26.13.0 --abi arm64-v8a ...
+ *   node tools/provision.mjs --allow-page-align-4k ...  仅门禁⑦降级 + 强制警告（bring-up 用）
+ *
+ * jniLibs 兄弟文件二分类（FR-001-033，规划 §6.1）：
+ *   ELF magic   ⇒ 文件名必须 = libnode_cli.so，走七项门禁全套；
+ *   文本+首行#! ⇒ 名称 ∈ lock matrix.shellShims 白名单 + 壳五判据；
+ *   其余 .so    ⇒ 拒绝（BANNED_IN_AAR：libnode.so/libc++_shared.so 恒拒，白名单不豁免）。
  *
  * 退出码：0 全过 · 2 门禁不合格 · 1 用法/IO 错误
  */
@@ -36,11 +47,17 @@ const RES_PROPERTIES = 'node-cli.properties';
 const DEFAULT_BINARY = 'libnode_cli.so';
 // 绝不进入本 AAR 的文件（node-runtime 统一供给；同名库重复会造成包内冲突）。
 const BANNED_IN_AAR = ['libnode.so', 'libc++_shared.so'];
+// assets 树名（规划 §5：assets/node-bridge-tools/）与其内 manifest 文件名。
+const ASSETS_TREE = 'node-bridge-tools';
+const MANIFEST_FILE = 'manifest.json';
+// 壳脚本网络/下载类关键词黑名单（FR-001-034 判据④；C2 纪律在脚本层生效）。
+const SHIM_FORBIDDEN = [/curl/, /wget/, /https?:\/\//, /\bnc\s/, /\bssh\b/, /\bftp\b/, /\blibnode\.so\b/, /libc\+\+_shared\.so/];
 // ───────────────────────────────────────────────────────────────────────────
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LOCK_PATH = path.join(ROOT, LOCK_FILE);
 const MODULE_JNILIBS = path.join(MODULE_DIR, 'src', 'main', 'jniLibs');
+const MODULE_ASSETS = path.join(MODULE_DIR, 'src', 'main', 'assets');
 
 const args = process.argv.slice(2);
 const has = (f) => args.includes(f);
@@ -129,6 +146,10 @@ function parseElf(buf) {
   return { eType, eMachine, ptInterp, interp, loadAligns, needed, soname };
 }
 
+function isElfMagic(buf) {
+  return buf.length >= 4 && buf.readUInt32BE(0) === 0x7f454c46;
+}
+
 function gates(buf, rel, allowedNeeded) {
   let elf;
   try {
@@ -172,6 +193,124 @@ function printGates(g) {
   for (const x of g.results) say(`${x.ok ? '✔' : '✘'} ${x.id} — ${x.detail}`);
 }
 
+// ── manifest（FR-001-021/031；摘要算法单源：--manifest-only 与 --assets stage 共用）──
+
+function sha256File(p) {
+  const h = crypto.createHash('sha256');
+  h.update(fs.readFileSync(p));
+  return h.digest('hex');
+}
+
+/** 递归收集目录内全部文件（相对路径 POSIX 化、排序——树摘要与目录序无关）。 */
+function walkFiles(dir, base = dir) {
+  const out = [];
+  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fp = path.join(dir, ent.name);
+    if (ent.isDirectory()) out.push(...walkFiles(fp, base));
+    else if (ent.isFile()) out.push(path.relative(base, fp).split(path.sep).join('/'));
+  }
+  return out.sort();
+}
+
+function buildManifest(treeDir, { tool, version, abi }) {
+  const files = walkFiles(treeDir).filter((f) => f !== MANIFEST_FILE);
+  const map = {};
+  for (const rel of files) map[rel] = sha256File(path.join(treeDir, rel));
+  const totalSource = files.map((f) => `${f}${map[f]}`).join('\n');
+  const totalSha256 = crypto.createHash('sha256').update(totalSource).digest('hex');
+  return {
+    tool, version, abi,
+    files: map,
+    fileCount: files.length,
+    totalSha256,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/** assets 静态性检查（FR-001-032）：树内不得出现 ELF magic 文件（纯 JS/JSON/文档）。 */
+function assertStaticTree(treeDir) {
+  const bad = [];
+  for (const rel of walkFiles(treeDir)) {
+    const fp = path.join(treeDir, rel);
+    const fd = fs.openSync(fp, 'r');
+    const head = Buffer.alloc(4);
+    const n = fs.readSync(fd, head, 0, 4, 0);
+    fs.closeSync(fd);
+    if (n === 4 && isElfMagic(head)) bad.push(rel);
+  }
+  if (bad.length) {
+    throw new GateError(`assets 静态性检查失败：树内出现 ELF magic 文件（${bad.length} 个）：${bad.slice(0, 5).join(', ')}${bad.length > 5 ? '…' : ''}`);
+  }
+  say(`✔ assets 静态性：树内无 ELF magic 文件（.wasm 放行口径 ⬜ 规划 §6）`);
+}
+
+class GateError extends Error {}
+
+// ── 壳脚本五判据（FR-001-034，规划 §6.1；生成器在 build 脚本，校验器在此——分离）──
+
+function validateShim(file, name, entry, lockedShim) {
+  const content = fs.readFileSync(file, 'utf8');
+  const lines = content.split(/\r?\n/);
+  const sha256 = crypto.createHash('sha256').update(content).digest('hex');
+  const r = [];
+  const add = (id, ok, detail) => r.push({ id, ok, detail });
+
+  add('判据① 名称 ∈ matrix.shellShims', true, `${name} → entry ${entry}`);
+  add('判据② shebang = #!/system/bin/sh', lines[0] === '#!/system/bin/sh', `首行=${JSON.stringify(lines[0])}`);
+  const execOk = content.includes(`"\${NODE_NATIVE_DIR:-\$(dirname "\$0")}/libnode_cli.so"`)
+    && content.includes(`"\$NODE_TOOLS_DIR/${entry}"`);
+  add('判据③ exec 目标仅 libnode_cli.so + 树内入口', execOk,
+    execOk ? `exec … libnode_cli.so + NODE_TOOLS_DIR/${entry}` : '未匹配模板 exec 行（libnode_cli.so + lock 登记 entry）');
+  const hit = SHIM_FORBIDDEN.filter((re) => re.test(content)).map((re) => re.source);
+  add('判据④ 无网络/下载命令、无 libnode.so/libc++_shared.so 引用', hit.length === 0,
+    hit.length ? `命中黑名单：${hit.join(', ')}` : '黑名单零命中');
+  if (lockedShim && lockedShim.sha256 && lockedShim.sha256.length === 64) {
+    add('判据⑤ sha256 与 lock 一致', sha256 === lockedShim.sha256, `${sha256.slice(0, 16)}… vs ${lockedShim.sha256.slice(0, 16)}…`);
+  } else {
+    add('判据⑤ sha256+size（draft 仅记录）', true, `sha256=${sha256.slice(0, 16)}… size=${Buffer.byteLength(content)}`);
+  }
+  const ok = r.every((x) => x.ok);
+  for (const x of r) say(`  ${x.ok ? '✔' : '✘'} ${x.id} — ${x.detail}`);
+  return { ok, sha256, size: Buffer.byteLength(content) };
+}
+
+/** jniLibs 兄弟文件二分类检查（FR-001-033）+ 白名单三壳「应有尽有」（--check 用）。 */
+function checkSiblings(dir, active, lock, rel) {
+  const whitelist = (lock.matrix?.shellShims ?? []).map((s) => s.name);
+  const entries = fs.readdirSync(dir).filter((f) => f.endsWith('.so'));
+  const problems = [];
+  for (const f of entries) {
+    const fp = path.join(dir, f);
+    if (BANNED_IN_AAR.includes(f)) {
+      problems.push(`${f} ∈ BANNED_IN_AAR（恒拒，白名单不豁免）`);
+      continue;
+    }
+    const head = fs.readFileSync(fp).subarray(0, 4);
+    if (isElfMagic(head)) {
+      if (f !== active.name) problems.push(`${f}：ELF 但文件名 ≠ ${active.name}（唯一原生件纪律，D3）`);
+      // 主件 ELF 门禁由调用方跑（--check/--out 主流程）
+    } else {
+      const first = fs.readFileSync(fp, 'utf8').split(/\r?\n/)[0];
+      if (whitelist.includes(f) && first.startsWith('#!')) {
+        const entry = (lock.matrix?.shellShims ?? []).find((s) => s.name === f)?.entry;
+        const locked = (rel.builtFrom?.shims ?? []).find((s) => s.name === f);
+        say(`壳脚本 ${f}（entry=${entry}）五判据：`);
+        const v = validateShim(fp, f, entry, locked);
+        if (!v.ok) problems.push(`${f}：壳五判据未全过`);
+      } else if (whitelist.includes(f)) {
+        problems.push(`${f}：在白名单但首行非 #!（伪壳，二分类不过）`);
+      } else {
+        problems.push(`${f}：非 ELF、非白名单壳（jniLibs 只允许 ${active.name} + 白名单三壳）`);
+      }
+    }
+  }
+  // 应有尽有：主件 + 白名单三壳
+  for (const f in { [active.name]: 1, ...Object.fromEntries(whitelist.map((n) => [n, 1])) }) {
+    if (!entries.includes(f)) problems.push(`缺件：${f} 不在 jniLibs（白名单应有尽有，FR-001-033）`);
+  }
+  return problems;
+}
+
 // ── 主流程 ──────────────────────────────────────────────────────────────────
 
 function readLock() {
@@ -196,6 +335,90 @@ function main() {
   say(`目标 release：version=${rel.version} abi=${rel.abi}（${rel.pairedRuntime?.coordinates ?? '无配对信息'}）`);
   if (rel.status === 'draft') say('⚠ lock 中该 release 为 draft：sha/size 无锁值，仅记录不比对');
 
+  // ── --manifest-only <outDir>（build 步⑧：在产物目录内生成 manifest，不投放）──
+  const manifestOnly = argOf('--manifest-only');
+  if (manifestOnly) {
+    const treeDir = path.resolve(manifestOnly, ASSETS_TREE);
+    if (!fs.existsSync(treeDir)) throw new GateError(`缺 ${treeDir}（build 步⑦ 应先产出树）`);
+    assertStaticTree(treeDir);
+    const m = buildManifest(treeDir, { tool: 'provision.mjs', version: rel.version, abi: rel.abi });
+    fs.writeFileSync(path.join(treeDir, MANIFEST_FILE), JSON.stringify(m, null, 2) + '\n');
+    say(`✔ manifest.json → ${path.join(treeDir, MANIFEST_FILE)}（fileCount=${m.fileCount}，totalSha256=${m.totalSha256.slice(0, 16)}…）`);
+    process.exit(0);
+  }
+
+  // ── --shims <dir>（FR-001-035：五判据校验 + 投放三壳进 jniLibs）──────────
+  const shimsDir = argOf('--shims');
+  if (shimsDir) {
+    const whitelist = lock.matrix?.shellShims ?? [];
+    if (!whitelist.length) throw new Error('lock matrix.shellShims 为空（白名单事实源缺失，FR-001-033）');
+    const dir = path.resolve(shimsDir);
+    const problems = [];
+    const destDir = path.join(ROOT, MODULE_JNILIBS, active.abi);
+    for (const w of whitelist) {
+      const src = path.join(dir, w.name);
+      if (!fs.existsSync(src)) { problems.push(`缺件：${src}`); continue; }
+      say(`壳脚本 ${w.name}（entry=${w.entry}）五判据：`);
+      const locked = (rel.builtFrom?.shims ?? []).find((s) => s.name === w.name);
+      const v = validateShim(src, w.name, w.entry, locked);
+      if (!v.ok) problems.push(`${w.name}：五判据未全过`);
+    }
+    const extras = fs.readdirSync(dir).filter((f) => f.endsWith('.so') && !whitelist.some((w) => w.name === f) && f !== active.name);
+    for (const e of extras) problems.push(`${e}：不在白名单（${dir} 内只应有三壳）`);
+    if (problems.length) {
+      for (const p of problems) say(`✘ ${p}`);
+      throw new GateError('壳脚本校验不合格 ⇒ 拒绝投放');
+    }
+    fs.mkdirSync(destDir, { recursive: true });
+    for (const w of whitelist) fs.copyFileSync(path.join(dir, w.name), path.join(destDir, w.name));
+    for (const banned of BANNED_IN_AAR) {
+      if (fs.existsSync(path.join(destDir, banned))) {
+        throw new Error(`${banned} 不得进入本 AAR（应由配对 runtime 供给，避免包内同名冲突）`);
+      }
+    }
+    say(`✔ 三壳投放（${whitelist.map((w) => w.name).join(' / ')}）→ ${destDir}`);
+    process.exit(0);
+  }
+
+  // ── --assets <dir> [--assets-mode stage|verify]（FR-001-030/031/032）──────
+  const assetsDir = argOf('--assets');
+  if (assetsDir) {
+    const mode = argOf('--assets-mode', 'stage');
+    const srcTree = path.resolve(assetsDir, ASSETS_TREE);
+    const destTree = path.join(ROOT, MODULE_ASSETS, ASSETS_TREE);
+
+    if (mode === 'stage') {
+      if (!fs.existsSync(srcTree)) throw new GateError(`缺 ${srcTree}（build 步⑦ 应先产出树）`);
+      assertStaticTree(srcTree);
+      fs.rmSync(path.join(ROOT, MODULE_ASSETS, ASSETS_TREE), { recursive: true, force: true }); // 幂等：先清残留
+      fs.mkdirSync(path.join(ROOT, MODULE_ASSETS), { recursive: true });
+      fs.cpSync(srcTree, destTree, { recursive: true });
+      const m = buildManifest(destTree, { tool: 'provision.mjs', version: rel.version, abi: rel.abi });
+      fs.writeFileSync(path.join(destTree, MANIFEST_FILE), JSON.stringify(m, null, 2) + '\n');
+      say(`✔ assets 投放：${destTree}（fileCount=${m.fileCount}，totalSha256=${m.totalSha256.slice(0, 16)}…）`);
+      process.exit(0);
+    }
+    if (mode === 'verify') {
+      const manifestPath = path.join(destTree, MANIFEST_FILE);
+      if (!fs.existsSync(manifestPath)) throw new GateError(`缺已投放的 ${manifestPath}（先 --assets-mode stage）`);
+      const m = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      const actual = buildManifest(destTree, { tool: 'verify', version: m.version, abi: m.abi });
+      const problems = [];
+      const listed = new Set(Object.keys(m.files ?? {}));
+      const actualSet = new Set(Object.keys(actual.files));
+      for (const f of listed) if (!actualSet.has(f)) problems.push(`缺文件：${f}`);
+      for (const f of actualSet) if (!listed.has(f)) problems.push(`多文件：${f}`);
+      for (const f of listed) if (actualSet.has(f) && actual.files[f] !== m.files[f]) problems.push(`哈希漂移：${f}`);
+      if ((m.fileCount ?? -1) !== actual.fileCount) problems.push(`fileCount 不一致：manifest=${m.fileCount} 实测=${actual.fileCount}`);
+      if ((m.totalSha256 ?? '') !== actual.totalSha256) problems.push(`totalSha256 不一致：manifest=${m.totalSha256?.slice(0, 16)}… 实测=${actual.totalSha256.slice(0, 16)}…`);
+      for (const p of problems) say(`✘ ${p}`);
+      if (problems.length) throw new GateError(`assets verify 失败（${problems.length} 项差异）`);
+      say(`✔ assets verify：${actual.fileCount} 个文件逐一复验一致（totalSha256=${actual.totalSha256.slice(0, 16)}…）`);
+      process.exit(0);
+    }
+    throw new Error(`未知 --assets-mode：${mode}（可用 stage|verify）`);
+  }
+
   const inspectPath = argOf('--inspect');
   if (inspectPath) {
     const buf = fs.readFileSync(inspectPath);
@@ -206,10 +429,9 @@ function main() {
   }
 
   const outDir = argOf('--out');
-  const from = argOf('--from');
 
   if (!outDir) {
-    // --check：校验已投放产物
+    // --check：校验已投放产物（ELF 门禁 + 兄弟二分类 + 壳五判据 + 应有尽有）
     const target = path.join(ROOT, MODULE_JNILIBS, active.abi, active.name);
     if (!fs.existsSync(target)) {
       say(`未投放：${target}（先跑 --out …）`);
@@ -218,16 +440,17 @@ function main() {
     const buf = fs.readFileSync(target);
     const g = gates(buf, rel, allowedNeeded);
     printGates(g);
-    // 纪律：jniLibs 目录里只能有本工具二进制，绝不能混入引擎/C++ 运行时。
+    // 纪律：jniLibs 兄弟文件二分类（ELF=主件 / sh 壳=白名单+五判据 / 其余拒绝）+ 应有尽有。
     const dir = path.dirname(target);
-    const siblings = fs.readdirSync(dir).filter((f) => f.endsWith('.so'));
-    const illegal = siblings.filter((f) => f !== active.name);
-    say(`${illegal.length === 0 ? '✔' : '✘'} jniLibs 仅含 ${active.name}（其它 .so：${illegal.length ? JSON.stringify(illegal) : '无'}）`);
-    const ok = g.ok && illegal.length === 0;
+    const problems = checkSiblings(dir, active, lock, rel);
+    for (const p of problems) say(`✘ ${p}`);
+    if (!problems.length) say(`✔ jniLibs 兄弟文件二分类 + 白名单应有尽有（${lock.matrix?.shellShims?.map((s) => s.name).join(' / ') ?? '无'}）`);
+    const ok = g.ok && problems.length === 0;
     say(ok ? '门禁：全过' : '门禁：不合格');
     process.exit(ok ? 0 : 2);
   }
 
+  const from = argOf('--from');
   if (!from) throw new Error(`--out 需要配 --from <${DEFAULT_BINARY}>`);
   const buf = fs.readFileSync(from);
   const g = gates(buf, rel, allowedNeeded);
@@ -271,6 +494,10 @@ function main() {
 try {
   main();
 } catch (e) {
+  if (e instanceof GateError) {
+    process.stderr.write(`[provision] 门禁不合格：${e.message}\n`);
+    process.exit(2);
+  }
   process.stderr.write(`[provision] 失败：${e.message}\n`);
   process.exit(1);
 }

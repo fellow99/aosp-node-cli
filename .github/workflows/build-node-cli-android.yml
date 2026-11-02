@@ -1,19 +1,44 @@
-name: CI (scaffold) — aosp-node-cli
+name: CI — aosp-node-cli
 
-# 000-scaffold 阶段的 CI 只做「配置期门禁」：
-#   - Gradle 配置/任务求值（无 .so 也必须通过 —— FR：二进制缺失不阻碍配置期）
-#   - provision.mjs 语法与退出码纪律自检（未投放 = 退出码 2 = 预期）
-# 真实的交叉编译 + 门禁 + Release 流水线在 M1 接入（替换本文件）。
+# 双 Job（002-building-workflow，规划 §9）：
+#   config-check            配置期门禁（push/PR/dispatch 全触发；permissions: contents: read）
+#   build-android-arm64-v8a 真实流水线（仅 tag v* / 手动 dispatch；permissions: contents: write）
+#     resolve 版本 → fetch → build（001 十步）→ provision 全门禁 → assembleRelease
+#     → 归档 tar.gz + .sha256 → GitHub Release → lock 回写物 artifact（人工 PR，不 push main）
+#
+# 纪律：
+#   - 「预期非零退出」的自检一律先捕获后断言（`cmd || code=$?` 再断言）——修复 000 登记的
+#     `bash -e` 断言分支不可达缺陷（FR-002-004）；
+#   - 不设 timeout-minutes：冷 V8 交叉编译可数小时（runtime 同款经验，6h 平台上限）；
+#   - 16GB swapfile：V8 host snapshot 编译峰值可超 runner 16GB RAM；
+#   - 凭据不入日志；RELEASE 类敏感参数不出现在 push 路径（FR-002-009）。
+
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      node_version:
+        description: 'Node.js version (= CLI_VERSION, must match lock active.version)'
+        required: false
+        default: ''
+      android_api:
+        description: 'Android API level (default: lock releases[].androidApi = 24)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
 
+env:
+  # NDK 钉版单点（规划 §3.2/§4.1：与 aosp-node-runtime 对齐 r30 线；⬜ 首跑核对后回写 lock）
+  NDK_VERSION: '30.0.16248370'
+  DIST: .dist
+
 jobs:
+  # ── Job 1：配置期门禁（000-scaffold 语义保留 + 002 增强）──────────────────
   config-check:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -31,20 +56,189 @@ jobs:
         with:
           gradle-version: '9.4.1'
 
-      - name: Gradle configuration gate（无 .so 必须可配置）
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Gradle configuration gate（无 .so 必须可配置，FR-000-040）
         run: gradle :node-cli:tasks --console=plain
 
-      - name: provision.mjs syntax + exit-code discipline
+      - name: lock JSON syntax gate（FR-001-004 数据模型可解析）
+        run: node -e "JSON.parse(require('fs').readFileSync('node-cli.lock.json','utf8')); console.log('lock JSON OK')"
+
+      - name: tool/script syntax gates（FR-000-042）
         run: |
           node --check tools/provision.mjs
-          # 未投放产物时 --check 的预期退出码是 2（未投放），其它非零码视为工具缺陷。
-          node tools/provision.mjs --check
-          code=$?
-          if [ "$code" -ne 2 ]; then
-            echo "provision --check 退出码=$code（预期 2=未投放）"; exit 1
-          fi
-
-      - name: scripts syntax
-        run: |
+          node --check tools/lock-writeback.mjs
+          node --check tools/make-elf-fixture.mjs
           node --check scripts/fetch-node-cli-source.mjs
           bash -n scripts/build-node-cli-android.sh
+          python3 -m py_compile scripts/patch-node-source-cli.py
+
+      - name: provision --check must exit 2 before provisioning（FR-000-041；先捕获后断言，FR-002-004）
+        run: |
+          code=0
+          node tools/provision.mjs --check || code=$?
+          if [ "$code" -ne 2 ]; then
+            echo "::error::expected exit 2 (未投放), got $code"
+            exit 1
+          fi
+
+      - name: fetch must refuse unpinned sha256（FR-001-001；先捕获后断言）
+        run: |
+          code=0
+          node scripts/fetch-node-cli-source.mjs --node 26.13.0 --out "$DIST/refuse" || code=$?
+          if [ "$code" -ne 1 ]; then
+            echo "::error::expected exit 1 (sha256 未钉选拒绝), got $code"
+            exit 1
+          fi
+
+      - name: synthetic fixture gates（TC-003-19 正样本 / 负样本判死；不依赖真实产物）
+        run: |
+          node tools/make-elf-fixture.mjs --out "$DIST/fixture-ok.so"
+          node tools/provision.mjs --inspect "$DIST/fixture-ok.so"
+          for b in interp align type machine needed; do
+            node tools/make-elf-fixture.mjs --out "$DIST/fixture-$b.so" --broken "$b"
+            code=0
+            node tools/provision.mjs --inspect "$DIST/fixture-$b.so" || code=$?
+            if [ "$code" -ne 2 ]; then
+              echo "::error::broken=$b expected exit 2, got $code"
+              exit 1
+            fi
+          done
+
+  # ── Job 2：真实流水线（tag v* / dispatch 触发）────────────────────────────
+  build-android-arm64-v8a:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: config-check
+    runs-on: ubuntu-24.04
+    # 不设 timeout-minutes：冷 V8 交叉编译可数小时（规划 §9）
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host toolchain（build-essential/make/python3/xz：V8 host snapshot 前置）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl file make python3 xz-utils
+
+      - name: Set up JDK 21 + Gradle 9.4.1 + Node 22
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Add 16 GB swap（V8 host snapshot 峰值内存，runtime 同款教训）
+        run: |
+          sudo swapoff -a || true
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h
+
+      - name: Install NDK ${{ env.NDK_VERSION }}（钉版单点）
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;${{ env.NDK_VERSION }}" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> "$GITHUB_ENV"
+          "$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" --version | head -1
+
+      - name: Resolve version（tag 去 v 前缀 = lock active.version 断言，FR-002-001）
+        run: |
+          LOCK_VER="$(node -e "console.log(require('./node-cli.lock.json').active.version)")"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER="${{ github.event.inputs.node_version }}"
+            if [ -z "$VER" ]; then VER="$LOCK_VER"; fi
+          fi
+          if [ "$VER" != "$LOCK_VER" ]; then
+            echo "::error::resolved version $VER != lock active.version $LOCK_VER (C5 同版本配对)"
+            exit 1
+          fi
+          echo "NODE_VERSION=$VER" >> "$GITHUB_ENV"
+          API="${{ github.event.inputs.android_api }}"
+          if [ -z "$API" ]; then
+            API="$(node -e "console.log(require('./node-cli.lock.json').releases[0].androidApi)")"
+          fi
+          echo "ANDROID_API=$API" >> "$GITHUB_ENV"
+
+      - name: Cache fetched source（键 = sourceTar 钉选值；fetch 可重入保证命中正确性）
+        uses: actions/cache@v4
+        with:
+          path: .dist/src
+          key: fetch-${{ env.NODE_VERSION }}-${{ hashFiles('node-cli.lock.json') }}
+          restore-keys: fetch-${{ env.NODE_VERSION }}-
+
+      - name: Fetch node source（单源 + SHASUMS256 官方校验链，FR-001-001…003）
+        run: node scripts/fetch-node-cli-source.mjs --node "$NODE_VERSION" --out "$DIST/src"
+
+      - name: Build（001 十步：configure 无 --shared + intl=none + 16KB → make → 门禁 → strip
+          → 树收集/剪枝/manifest → 三壳 → 元数据；FR-001-010…023）
+        run: |
+          bash scripts/build-node-cli-android.sh \
+            --node "$NODE_VERSION" --api "$ANDROID_API" \
+            --src "$DIST/src/node-src" \
+            --ndk "$ANDROID_NDK_HOME" \
+            --out "$DIST/out" \
+            --apply-patch cc-host,temporal,trap-handler,cpu-features
+
+      - name: Provision（ELF 七项门禁 + 三壳五判据 + assets 静态性；全过才继续，FR-001-030…036）
+        run: |
+          node tools/provision.mjs --out node-cli/src/main/jniLibs --from "$DIST/out/libnode_cli.so"
+          node tools/provision.mjs --shims "$DIST/out"
+          node tools/provision.mjs --assets "$DIST/out"
+          node tools/provision.mjs --check
+          node tools/provision.mjs --assets . --assets-mode verify
+
+      - name: AAR（容器面一并验证）
+        run: gradle :node-cli:assembleRelease --console=plain
+
+      - name: Archive（tar.gz + .sha256 侧车，FR-002-005）
+        run: |
+          VER="$NODE_VERSION"
+          NAME="node-cli-v${VER}-android-arm64-v8a"
+          mkdir -p "$DIST/archive"
+          cp "$DIST/out/libnode_cli.so" \
+             "$DIST/out/libnpm.so" "$DIST/out/libnpx.so" "$DIST/out/libcorepack.so" \
+             "$DIST/out/BUILD-METADATA.txt" "$DIST/out/FETCH-METADATA.json" \
+             "$DIST/archive/"
+          cp -r "$DIST/out/node-bridge-tools" "$DIST/archive/node-bridge-tools"
+          cp LICENSE "$DIST/archive/"
+          cp node-cli/THIRD-PARTY-NOTICES.md "$DIST/archive/"
+          cp node-cli/build/outputs/aar/node-cli-release.aar "$DIST/archive/" 2>/dev/null || true
+          tar -czf "$DIST/$NAME.tar.gz" -C "$DIST/archive" .
+          ( cd "$DIST" && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256" )
+          ls -la "$DIST" | grep -E '\.tar\.gz|\.sha256'
+
+      - name: Lock writeback artifact（人工 PR 底稿；不 push main，FR-002-007）
+        run: node tools/lock-writeback.mjs --from "$DIST/out" --fetch-meta "$DIST/src/FETCH-METADATA.json" --out "$DIST/lock-writeback"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-cli-${{ env.NODE_VERSION }}-android-arm64-v8a
+          path: |
+            .dist/node-cli-v*.tar.gz
+            .dist/node-cli-v*.tar.gz.sha256
+            .dist/lock-writeback/**
+
+      - name: GitHub Release（tag 钉 commit，FR-002-006）
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            .dist/node-cli-v*.tar.gz
+            .dist/node-cli-v*.tar.gz.sha256
+          generate_release_notes: true

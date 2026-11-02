@@ -30,7 +30,8 @@ C1/D8 禁止——补丁若需，后置在构建脚本内且逐条记录）。
 
 ### 3.1 源获取域（M1-T1）
 
-- **FR-001-001（MUST）**：单源钉选获取——`node-v<ver>.tar.xz` 与官方 `SHASUMS256.txt`，
+- **FR-001-001（MUST）**：源钉选获取——`node-v<ver>.tar.xz` 与官方 `SHASUMS256.txt` 校验链 +
+  **corepack 官方 tarball 单独钉版**（规划 v2.2：Node 25 起树内无 deps/corepack），
   版本 + URL + SHA-256 出自唯一事实源 `node-cli.lock.json` `builtFrom.sourceTar`；下载后
   逐字节校验，任一不符即失败。
 - **FR-001-002（MUST）**：获取可重入——已下载且哈希一致的文件跳过重复下载（CI 缓存友好）；
@@ -65,8 +66,8 @@ C1/D8 禁止——补丁若需，后置在构建脚本内且逐条记录）。
 
 ### 3.3 随包数据域（M1-T4）
 
-- **FR-001-020（MUST）**：npm/corepack 树收集——取自**同一棵源码树** `deps/npm` /
-  `deps/corepack`（零额外下载，D6）；剪枝清单显式（test/docs/大型 fixture，⬜ 清单 M1-T4
+- **FR-001-020（MUST）**：npm/corepack 树收集——npm 取自**同一棵源码树** `deps/npm`（零额外
+  下载，D6）；corepack 取自**钉版 tarball 解包树**（`corepack/dist/corepack.js` 入口）；剪枝清单显式（test/docs/大型 fixture，⬜ 清单 M1-T4
   以实际树拍板并登记 BUILD-METADATA）；纯数据，无 exec 位要求（D5）。
 - **FR-001-021（MUST）**：manifest 生成——`manifest.json` 含逐文件 sha256 + fileCount +
   总 sha256（树摘要，与目录序无关）+ 生成时间；npm/corepack 树 + manifest 一同随包

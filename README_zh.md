@@ -61,28 +61,40 @@ dependencies {
 ## AAR 内容
 
 ```
-jni/arm64-v8a/libnode_cli.so      # node 命令行（exec 型 PIE，16KB 对齐）
-assets/node-bridge-tools/npm/     # npm JS 树（纯数据；M1 投放）
+jni/arm64-v8a/libnode_cli.so      # node 命令行（exec 型 PIE，16KB 对齐；唯一 ELF）
+jni/arm64-v8a/libnpm.so           # npm 壳脚本（sh）：exec libnode_cli.so <物化树>/npm/bin/npm-cli.js "$@"
+jni/arm64-v8a/libnpx.so           # npx 壳脚本（sh）：入口 npm/bin/npx-cli.js
+jni/arm64-v8a/libcorepack.so      # corepack 壳脚本（sh）：corepack 入口
+assets/node-bridge-tools/npm/     # npm JS 树（deps/npm 剪枝；纯数据，首启物化到 filesDir）
 assets/node-bridge-tools/corepack/
+assets/node-bridge-tools/manifest.json   # 逐文件 sha256 + 总摘要（投放时生成/复验）
 ```
+
+- 壳脚本经 `$HOME/bin` symlink 农场直出 `npm`/`npx`/`corepack` 命令（规划 §5/§7）；
+  `libc++_shared.so` **不随包**（配对 node-runtime 统一供给）；
+- `META-INF/node-cli.properties`：版本/ABI/size/sha256/配对 runtime 元数据（投放时写入）。
 
 要求：`minSdk 24` · ABI `arm64-v8a`。
 
 ## 如何构建
 
-二进制**不入库**，也从不由手工构建。000-scaffold 已固化接口与门禁；真实交叉编译流水线在
-**M1** 接入 `.github/workflows/build-node-cli-android.yml`（当前该 workflow 只跑配置期门禁）。
+二进制**不入库**，也从不由手工构建。构建脚本与门禁已全量落地（001-building）；真实交叉编译
+在 CI（tag `v<ver>` 触发 `.github/workflows/build-node-cli-android.yml` 的
+`build-android-arm64-v8a` Job；push/PR 只跑配置期门禁）。
 
 ```bash
-# 1) 取源（M1）：官方 node-v<ver>.tar.xz，不改源，记录 sha256
+# 1) 取源：官方 node-v<ver>.tar.xz + SHASUMS256.txt 官方校验链，不改源
 node scripts/fetch-node-cli-source.mjs --node 26.13.0 --out .dist/src
 
-# 2) 交叉编译（M1）：不带 --shared 的 android-configure → make → strip
+# 2) 交叉编译：不带 --shared 的 android_configure + --with-intl=none → make → 门禁 → strip
+#    → npm/corepack 树收集/剪枝/manifest → 三壳脚本（--dry-run 只打印计划）
 bash scripts/build-node-cli-android.sh --node 26.13.0 --api 24 \
-  --src .dist/src/node-src --ndk "$ANDROID_NDK_HOME" --out build/out
+  --src .dist/src/node-src --ndk "$ANDROID_NDK_HOME" --out .dist/out
 
-# 3) 门禁/投放
-node tools/provision.mjs --out node-cli/src/main/jniLibs --from build/out/libnode_cli.so
+# 3) 门禁/投放（ELF 七项 + 三壳五判据 + assets 静态性 + manifest）
+node tools/provision.mjs --out node-cli/src/main/jniLibs --from .dist/out/libnode_cli.so
+node tools/provision.mjs --shims .dist/out
+node tools/provision.mjs --assets .dist/out
 node tools/provision.mjs --check
 ```
 
