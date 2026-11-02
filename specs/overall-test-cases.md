@@ -1,9 +1,9 @@
 # overall-test-cases.md —— `aosp-node-cli` 全模块测试用例索引
 
-> **性质**：**索引文档**（不是逐条用例全集）。逐条用例的步骤与执行记录写在 `specs/000-scaffold/test-cases.md`（本仓当前唯一模块）；本文负责①分层口径 ②用例族索引 ③里程碑判据 ④禁止的判据 ⑤已知基线。
+> **性质**：**索引文档**（不是逐条用例全集）。逐条用例的步骤与执行记录写在 `specs/000-scaffold/test-cases.md`、`specs/003-cli/test-cases.md`、`specs/101-npm-integration/test-cases.md`（003/101 为本批新增正典）；本文负责①分层口径 ②用例族索引 ③里程碑判据 ④禁止的判据 ⑤已知基线。
 > **依据**：`specs/constitution.md`（C1–C8 / S1–S10）· `docs/000-工程规划.md`（唯一权威，下称「规划 §」：§7.1 探针 / §9 CI / §12 门禁汇总）。
 > **标记**：✅已实现可跑 / ⬜规划未实现（里程碑）/ ⚠️风险项。
-> **版本**：v1.0 · 2026-11-02。**判据纪律：每条判据必须可证伪；无「通过/不通过」二元出口的条目不得进表。**
+> **版本**：v1.1 · 2026-11-02（模块 001/002/003/101 立项批次；判据纪律不变）。**判据纪律：每条判据必须可证伪；无「通过/不通过」二元出口的条目不得进表。**
 
 ---
 
@@ -73,6 +73,18 @@
 | P8 | `$HOME/bin/node → libnode_cli.so` symlink 执行成功 | ⬜ |
 | P9 | JIT hotLoop 计时 + `--jitless` 可运行（Android 15 真机） | ⬜ |
 | P10 | `https.get('https://registry.npmjs.org')` TLS 握手成功（内嵌 CA store） | ⬜ |
+
+### 2.5 新模块用例索引（2026-11-02 立项，规划 §10.2）
+
+| 模块 | 正典位置 | 用例段 | 环境 | 状态 |
+|---|---|---|---|---|
+| 001-building | tasks T2/T3/T4 内嵌（fetch/build/provision 各步验收）+ 本表 TC-M1-001…009 归属本模块 | TC-001-xx（host 子集） | host | 随本批 dev 执行；CI 子集 ⬜ |
+| 002-building-workflow | tasks T5 内嵌（YAML/断言模式/结构）+ 本表 TC-PUB-001/002 归属本模块 | TC-002-xx | host | 随本批 dev 执行；跑批 ⬜ 待 tag |
+| 003-cli | [`003-cli/test-cases.md`](./003-cli/test-cases.md) | TC-003-01…18（device）/ 19…21（host） | host+device | host 随本批执行；device ⬜ 待 CI 首产 + M2-T2 |
+| 101-npm-integration | [`101-npm-integration/test-cases.md`](./101-npm-integration/test-cases.md) | TC-101-01…15（device）/ 16…22（host） | host+device | host 随本批执行；device ⬜（P10 未过 ⇒ P6/P7 族 BLOCKED 机制） |
+
+> 探针归属：P1/P5/P8/P9/P10 → 003-cli（TC-003-01…14）；P2/P3/P4/P6/P7 → 101-npm-integration
+> （TC-101-01…10）；§2.4 表与模块正典一一对应，消费方验收按模块正典逐条引用，不另造判据。
 
 ---
 

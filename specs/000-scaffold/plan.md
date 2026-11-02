@@ -226,3 +226,7 @@ workflow `config-check`（ubuntu-24.04 / 20 min / `contents: read`）步骤链�
 | 6 | CI 真实流水线 + 修复 §6 ⚠️ 断言 + GitHub Release + lock 回写 released（含 gates 真实结论） | M1-T6 | TC-PUB-001/002 + G1/G2/G4 |
 | 7 | README（中英）「AAR 内容」小节回写（壳脚本/manifest） | M1 文档项 | 与规划 §5 对齐（STRUCTURE §6-2） |
 | 8 | `gates` draft 语义 / `VERSION_NAME` 消费核实（§3.3 两处 [NEEDS CLARIFICATION]） | M1-T6 发布前检查 | 维护者拍板 + TC-PUB-003 |
+
+> **模块归属（2026-11-02 立项，规划 §10.2）**：#1–#5 → [`001-building`](../001-building/spec.md)；
+> #6 → [`002-building-workflow`](../002-building-workflow/spec.md)（含 `-e` 断言修复）；
+> #7 → 001 文档项（随 dev 执行）；#8 → 002 发布前检查。本清单条目不再在 000 内扩展。
