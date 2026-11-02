@@ -11,7 +11,7 @@
 
 ## T2 fetch 实现（替换骨架）
 - [x] T2.1 读 lock sourceTar → 计划；sha256 空串且未 `--allow-unpinned` ⇒ exit 1 — FR-001-001
-- [x] T2.2 下载 tar.xz + SHASUMS256.txt（可重入：存在且哈希一致跳过；不一致 exit 1）— FR-001-002
+- [x] T2.2 下载 tar.xz + SHASUMS256.txt（可重入：存在且哈希一致跳过；不一致 exit 2 = 校验失败语义）— FR-001-002
 - [x] T2.3 校验：SHASUMS256.txt 内本版本哈希 == lock 钉选值（`--allow-unpinned` 时 == 官方文件值并回写 FETCH-METADATA）— FR-001-001
 - [x] T2.4 解压 tar.xz → `<out>/node-src/`（官方原样，无补丁步骤）— FR-001-003
 - [x] T2.5 FETCH-METADATA.json（url/version/sha256/获取时间 + shasums 出处）

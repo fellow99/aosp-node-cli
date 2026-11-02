@@ -246,6 +246,26 @@ function assertStaticTree(treeDir) {
 
 class GateError extends Error {}
 
+/** 增量更新 META-INF properties（保留既有字段；规范化键序）。 */
+function updateProperties(updates) {
+  const resDir = path.join(ROOT, MODULE_DIR, 'src', 'main', 'resources', 'META-INF');
+  const resPath = path.join(resDir, RES_PROPERTIES);
+  let props = {};
+  try {
+    for (const line of fs.readFileSync(resPath, 'utf8').split(/\r?\n/)) {
+      const i = line.indexOf('=');
+      if (i > 0) props[line.slice(0, i)] = line.slice(i + 1);
+    }
+  } catch { /* 尚不存在 ⇒ 全新写 */ }
+  Object.assign(props, updates);
+  const ORDER = ['tool.version', 'abi', 'name', 'size', 'sha256', 'paired.runtime',
+    'npm.version', 'corepack.version', 'assets.sha256', 'provisionedAt'];
+  const keys = [...ORDER.filter((k) => props[k] !== undefined && props[k] !== ''),
+    ...Object.keys(props).filter((k) => !ORDER.includes(k) && props[k] !== '')];
+  fs.mkdirSync(resDir, { recursive: true });
+  fs.writeFileSync(resPath, keys.map((k) => `${k}=${props[k]}`).join('\n') + '\n');
+}
+
 // ── 壳脚本五判据（FR-001-034，规划 §6.1；生成器在 build 脚本，校验器在此——分离）──
 
 function validateShim(file, name, entry, lockedShim) {
@@ -257,10 +277,26 @@ function validateShim(file, name, entry, lockedShim) {
 
   add('判据① 名称 ∈ matrix.shellShims', true, `${name} → entry ${entry}`);
   add('判据② shebang = #!/system/bin/sh', lines[0] === '#!/system/bin/sh', `首行=${JSON.stringify(lines[0])}`);
-  const execOk = content.includes(`"\${NODE_NATIVE_DIR:-\$(dirname "\$0")}/libnode_cli.so"`)
-    && content.includes(`"\$NODE_TOOLS_DIR/${entry}"`);
-  add('判据③ exec 目标仅 libnode_cli.so + 树内入口', execOk,
-    execOk ? `exec … libnode_cli.so + NODE_TOOLS_DIR/${entry}` : '未匹配模板 exec 行（libnode_cli.so + lock 登记 entry）');
+  // 判据③ 结构化断言（001 plan §3.5 v2.2.1）：exec 行**行级全等**（libnode_cli.so + lock 登记 entry + "$@"），
+  // 其余非注释/非空行 ∈ 守卫白名单（NODE_TOOLS_DIR 缺失守卫 if/echo/exit 1/fi）——额外命令（如 rm -rf）判死。
+  const execLine = `exec "\${NODE_NATIVE_DIR:-\$(dirname "\$0")}/libnode_cli.so" "\$NODE_TOOLS_DIR/${entry}" "\$@"`;
+  const GUARD_OK = [
+    /^if \[ -z "\$NODE_TOOLS_DIR" \]; then$/,
+    /^\s+echo "[^"]*NODE_TOOLS_DIR[^"]*" >&2$/,
+    /^\s+exit 1$/,
+    /^fi$/,
+  ];
+  const unexpected = [];
+  let execSeen = 0;
+  for (const line of lines.slice(1)) {
+    if (line === '' || line.startsWith('#')) continue;
+    if (line === execLine) { execSeen++; continue; }
+    if (!GUARD_OK.some((re) => re.test(line))) unexpected.push(line);
+  }
+  const execOk = execSeen === 1 && unexpected.length === 0;
+  add('判据③ exec 目标仅 libnode_cli.so + 树内入口（结构化）', execOk,
+    execOk ? `exec 行全等（×1）+ 其余行 ∈ 守卫白名单（NODE_TOOLS_DIR/${entry}）`
+      : `exec 行出现 ${execSeen} 次；白名单外行：${unexpected.slice(0, 2).map((l) => JSON.stringify(l)).join('、')}${unexpected.length > 2 ? '…' : ''}`);
   const hit = SHIM_FORBIDDEN.filter((re) => re.test(content)).map((re) => re.source);
   add('判据④ 无网络/下载命令、无 libnode.so/libc++_shared.so 引用', hit.length === 0,
     hit.length ? `命中黑名单：${hit.join(', ')}` : '黑名单零命中');
@@ -277,15 +313,19 @@ function validateShim(file, name, entry, lockedShim) {
 /** jniLibs 兄弟文件二分类检查（FR-001-033）+ 白名单三壳「应有尽有」（--check 用）。 */
 function checkSiblings(dir, active, lock, rel) {
   const whitelist = (lock.matrix?.shellShims ?? []).map((s) => s.name);
+  const allowed = new Set([active.name, ...whitelist]);
   const entries = fs.readdirSync(dir).filter((f) => f.endsWith('.so'));
   const problems = [];
+  for (const f of fs.readdirSync(dir)) {
+    if (!allowed.has(f)) problems.push(`${f}：jniLibs 内非白名单文件（只允许 ${active.name} + 三壳；子目录/杂件一律拒）`);
+  }
   for (const f of entries) {
     const fp = path.join(dir, f);
     if (BANNED_IN_AAR.includes(f)) {
       problems.push(`${f} ∈ BANNED_IN_AAR（恒拒，白名单不豁免）`);
       continue;
     }
-    const head = fs.readFileSync(fp).subarray(0, 4);
+    const head = head4(fp);
     if (isElfMagic(head)) {
       if (f !== active.name) problems.push(`${f}：ELF 但文件名 ≠ ${active.name}（唯一原生件纪律，D3）`);
       // 主件 ELF 门禁由调用方跑（--check/--out 主流程）
@@ -305,10 +345,19 @@ function checkSiblings(dir, active, lock, rel) {
     }
   }
   // 应有尽有：主件 + 白名单三壳
-  for (const f in { [active.name]: 1, ...Object.fromEntries(whitelist.map((n) => [n, 1])) }) {
+  for (const f of allowed) {
     if (!entries.includes(f)) problems.push(`缺件：${f} 不在 jniLibs（白名单应有尽有，FR-001-033）`);
   }
   return problems;
+}
+
+/** 只读文件头 4 字节（避免为判形态把 ~90MB 主件整读进内存）。 */
+function head4(fp) {
+  const fd = fs.openSync(fp, 'r');
+  const b = Buffer.alloc(4);
+  const n = fs.readSync(fd, b, 0, 4, 0);
+  fs.closeSync(fd);
+  return b.subarray(0, n);
 }
 
 // ── 主流程 ──────────────────────────────────────────────────────────────────
@@ -395,7 +444,20 @@ function main() {
       fs.cpSync(srcTree, destTree, { recursive: true });
       const m = buildManifest(destTree, { tool: 'provision.mjs', version: rel.version, abi: rel.abi });
       fs.writeFileSync(path.join(destTree, MANIFEST_FILE), JSON.stringify(m, null, 2) + '\n');
-      say(`✔ assets 投放：${destTree}（fileCount=${m.fileCount}，totalSha256=${m.totalSha256.slice(0, 16)}…）`);
+      // v2.2.1：assets 就位后回填 properties 树级字段——与投放顺序无关保持自洽
+      // （--out 先跑时读到的是旧树/空树；此处以**本次**投放事实刷新）。
+      const stagedVersion = (p) => {
+        try { return JSON.parse(fs.readFileSync(path.join(destTree, p, 'package.json'), 'utf8')).version ?? ''; }
+        catch { return ''; }
+      };
+      const npmV = stagedVersion('npm');
+      const cpV = stagedVersion('corepack');
+      updateProperties({
+        ...(npmV ? { 'npm.version': npmV } : {}),
+        ...(cpV ? { 'corepack.version': cpV } : {}),
+        'assets.sha256': m.totalSha256,
+      });
+      say(`✔ assets 投放：${destTree}（fileCount=${m.fileCount}，totalSha256=${m.totalSha256.slice(0, 16)}…；properties 树级字段已刷新）`);
       process.exit(0);
     }
     if (mode === 'verify') {
@@ -475,6 +537,18 @@ function main() {
   // 版本元数据（供 AAR resources 使用）
   const resDir = path.join(ROOT, MODULE_DIR, 'src', 'main', 'resources', 'META-INF');
   fs.mkdirSync(resDir, { recursive: true });
+  // v2.2.1（评审 #15）：npm/corepack 版本与 assets 摘要——读**已投放树**的 package.json/manifest；
+  // 未投放则省略字段（不伪造——C7）。ndk/flags 随 lock 回写进 builtFrom（002 lock-writeback）。
+  const stagedTree = path.join(ROOT, MODULE_ASSETS, ASSETS_TREE);
+  const stagedVer = (p) => {
+    try { return JSON.parse(fs.readFileSync(path.join(stagedTree, p, 'package.json'), 'utf8')).version ?? ''; }
+    catch { return ''; }
+  };
+  const npmVer = stagedVer('npm');
+  const cpVer = stagedVer('corepack');
+  let assetsSha = '';
+  try { assetsSha = JSON.parse(fs.readFileSync(path.join(stagedTree, MANIFEST_FILE), 'utf8')).totalSha256 ?? ''; }
+    catch { /* 未投放 assets ⇒ 省略 */ }
   fs.writeFileSync(
     path.join(resDir, RES_PROPERTIES),
     [
@@ -484,6 +558,9 @@ function main() {
       `size=${buf.length}`,
       `sha256=${g.sha256}`,
       rel.pairedRuntime?.coordinates ? `paired.runtime=${rel.pairedRuntime.coordinates}` : '',
+      npmVer ? `npm.version=${npmVer}` : '',
+      cpVer ? `corepack.version=${cpVer}` : '',
+      assetsSha ? `assets.sha256=${assetsSha}` : '',
       `provisionedAt=${new Date().toISOString()}`,
       '',
     ].filter((l) => l !== '').join('\n'),

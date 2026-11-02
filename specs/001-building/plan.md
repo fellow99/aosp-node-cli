@@ -110,9 +110,12 @@ exec "${NODE_NATIVE_DIR:-$(dirname "$0")}/libnode_cli.so" "${NODE_TOOLS_DIR}/npm
 
 ### 3.4 剪枝清单（FR-001-020，⬜ M1-T4 以实际树定稿）
 
-初版口径（npm 树）：剔除 `test/`、`node_modules/.bin/`、`docs/`（npm 树内）、`markdocs`；
-corepack 树：剔除 `test/`、docs。规则实现为「目录名/后缀黑名单 + 剔除计数登记进
-BUILD-METADATA」，**不做内容改写**（C1：剪枝是复制时的文件级取舍，不触碰保留文件字节）。
+定稿口径（v2.2.1，评审 Critical #1 修正）：剔除 `test/`、`tests/`、`__tests__/`、`docs/`、
+`markdocs/`、`man/` 目录 + `node_modules/.bin/` + `*.md`；**保留 `node_modules` 本体**——
+npm-cli.js 的裸包名依赖（graceful-fs/proc-log/@npmcli/* …）全靠 `deps/npm/node_modules/`
+解析，整删则 `npm -v` 即 MODULE_NOT_FOUND。规则实现为「目录名/后缀黑名单 + 剔除计数登记
+进 BUILD-METADATA」，**不做内容改写**（C1：剪枝是复制时的文件级取舍，不触碰保留文件字节）；
+收集后以 host node 执行三个入口冒烟（`node <npm-cli.js> -v` 等）锁死此类回归（CI 步骤）。
 
 ### 3.5 provision 扩展（FR-001-030…036）
 
@@ -127,8 +130,9 @@ BUILD-METADATA」，**不做内容改写**（C1：剪枝是复制时的文件级
 
 - 壳五判据实现（全部满足才放行）：① 名称 ∈ `matrix.shellShims`；② 首行 ===
   `#!/system/bin/sh`；③ 内容仅引用 `libnode_cli.so` + `${NODE_TOOLS_DIR}/…js` 入口
-  （正则白名单：`libnode_cli.so`、`NODE_TOOLS_DIR`、`NODE_NATIVE_DIR`、`dirname`、`exec`、
-  入口路径 = lock 登记值）；④ 内容不得含网络/下载关键词（`curl`、`wget`、`http://`、
+  （**结构化断言**：exec 行行首锚定 = `exec "${NODE_NATIVE_DIR:-$(dirname "$0")}/libnode_cli.so"
+  "$NODE_TOOLS_DIR/<lock 登记 entry>" "$@"`；其余非注释行 ∈ 白名单 {NODE_TOOLS_DIR 守卫
+  if/echo/exit/fi、空行}——额外命令（如 `rm -rf`）不得出现）；④ 内容不得含网络/下载关键词（`curl`、`wget`、`http://`、
   `https://`、`nc `、`ssh `）与 `libnode.so`/`libc++_shared.so` 字样；⑤ sha256 + size 打印
   （draft 仅记录，released 后与 lock `builtFrom.shims` 比对）。
 - manifest.json 形态：`{ tool, version, abi, files: {"<relpath>": "<sha256>"}, fileCount,

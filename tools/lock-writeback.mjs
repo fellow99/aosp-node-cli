@@ -78,15 +78,24 @@ nrel.builtFrom = nrel.builtFrom ?? {};
 if (bm.ndk || bm.toolchain) nrel.builtFrom.ndk = bm.ndk ?? bm.toolchain;
 if (bm.configure) nrel.builtFrom.flags = bm.configure;
 if (bm.patch !== undefined) nrel.builtFrom.patch = bm.patch;
+// 每树摘要（v2.2.1 评审 #6）：对 manifest 中该前缀全部「relpath+sha256」排序串再摘要——树级、序无关
+const prefixDigest = (prefix) => {
+  const rows = Object.keys(manifest.files ?? {})
+    .filter((f) => f.startsWith(prefix + '/'))
+    .sort()
+    .map((f) => `${f}${manifest.files[f]}`);
+  return rows.length ? crypto.createHash('sha256').update(rows.join('\n')).digest('hex') : '';
+};
 nrel.builtFrom.npm = {
   version: pkgVersion('npm'), path: 'deps/npm',
   fileCount: Object.keys(manifest.files ?? {}).filter((f) => f.startsWith('npm/')).length,
-  sha256: '',
+  sha256: prefixDigest('npm'),
 };
 nrel.builtFrom.corepack = {
-  version: pkgVersion('corepack'), path: 'deps/corepack',
+  version: pkgVersion('corepack'), path: 'corepack', // v2.2：钉版 tarball 解包树（非 deps/corepack）
   fileCount: Object.keys(manifest.files ?? {}).filter((f) => f.startsWith('corepack/')).length,
-  sha256: '',
+  sha256: prefixDigest('corepack'),
+  sourceTar: rel.builtFrom?.corepackTar?.url ?? '',
 };
 nrel.builtFrom.assetsManifest = { fileCount: manifest.fileCount ?? 0, totalSha256: manifest.totalSha256 ?? '' };
 nrel.builtFrom.shims = (lock.matrix?.shellShims ?? []).map((s) => {

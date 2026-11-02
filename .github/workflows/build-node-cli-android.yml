@@ -17,6 +17,10 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    paths-ignore:
+      - 'docs/**'
+      - 'specs/**'
+      - '*.md'
   pull_request:
   workflow_dispatch:
     inputs:
@@ -28,6 +32,10 @@ on:
         description: 'Android API level (default: lock releases[].androidApi = 24)'
         required: false
         default: ''
+      apply_patches:
+        description: 'Patch ids (empty = bare configure, R1 attribution path; default: runtime-proven four)'
+        required: false
+        default: 'cc-host,temporal,trap-handler,cpu-features'
 
 permissions:
   contents: read
@@ -85,10 +93,21 @@ jobs:
             exit 1
           fi
 
-      - name: fetch must refuse unpinned sha256（FR-001-001；先捕获后断言）
+      - name: fetch must refuse unpinned sha256（FR-001-001；fixture lock 零网络，先捕获后断言）
         run: |
+          node -e "
+            const fs = require('fs');
+            const l = JSON.parse(fs.readFileSync('node-cli.lock.json', 'utf8'));
+            for (const r of l.releases ?? []) {
+              if (r.builtFrom?.sourceTar) r.builtFrom.sourceTar.sha256 = '';
+              if (r.builtFrom?.corepackTar) r.builtFrom.corepackTar.sha256 = '';
+            }
+            fs.mkdirSync(process.env.DIST, { recursive: true });
+            fs.writeFileSync(process.env.DIST + '/unpinned.lock.json', JSON.stringify(l, null, 2));
+          "
           code=0
-          node scripts/fetch-node-cli-source.mjs --node 26.13.0 --out "$DIST/refuse" || code=$?
+          node scripts/fetch-node-cli-source.mjs --node 26.13.0 --out "$DIST/refuse" \
+            --lock "$DIST/unpinned.lock.json" || code=$?
           if [ "$code" -ne 1 ]; then
             echo "::error::expected exit 1 (sha256 未钉选拒绝), got $code"
             exit 1
@@ -174,10 +193,10 @@ jobs:
           fi
           echo "ANDROID_API=$API" >> "$GITHUB_ENV"
 
-      - name: Cache fetched source（键 = sourceTar 钉选值；fetch 可重入保证命中正确性）
+      - name: Cache fetched downloads（只缓存源包原件——不缓存解压/编译树，保干净 runner 口径）
         uses: actions/cache@v4
         with:
-          path: .dist/src
+          path: .dist/src/downloads
           key: fetch-${{ env.NODE_VERSION }}-${{ hashFiles('node-cli.lock.json') }}
           restore-keys: fetch-${{ env.NODE_VERSION }}-
 
@@ -186,13 +205,23 @@ jobs:
 
       - name: Build（001 十步：configure 无 --shared + intl=none + 16KB → make → 门禁 → strip
           → 树收集/剪枝/manifest → 三壳 → 元数据；FR-001-010…023）
+        env:
+          APPLY_PATCHES: ${{ github.event.inputs.apply_patches }}
         run: |
-          bash scripts/build-node-cli-android.sh \
-            --node "$NODE_VERSION" --api "$ANDROID_API" \
-            --src "$DIST/src/node-src" \
-            --ndk "$ANDROID_NDK_HOME" \
-            --out "$DIST/out" \
-            --apply-patch cc-host,temporal,trap-handler,cpu-features
+          ARGS=(--node "$NODE_VERSION" --api "$ANDROID_API"
+                --src "$DIST/src/node-src" --ndk "$ANDROID_NDK_HOME" --out "$DIST/out")
+          if [ -n "$APPLY_PATCHES" ]; then
+            ARGS+=(--apply-patch "$APPLY_PATCHES")   # 默认=runtime 已证四件（规划 R1 v2.2.1 as-built）
+          else
+            echo "::notice::bare configure round (R1 归因通道; --apply-patch omitted)"
+          fi
+          bash scripts/build-node-cli-android.sh "${ARGS[@]}"
+
+      - name: Collected tree entry smoke（host Node；树完整性判据，TC-101-16——剪枝回归锁）
+        run: |
+          node "$DIST/out/node-bridge-tools/npm/bin/npm-cli.js" -v
+          node "$DIST/out/node-bridge-tools/npm/bin/npx-cli.js" -v
+          node "$DIST/out/node-bridge-tools/corepack/dist/corepack.js" --version
 
       - name: Provision（ELF 七项门禁 + 三壳五判据 + assets 静态性；全过才继续，FR-001-030…036）
         run: |
@@ -217,7 +246,7 @@ jobs:
           cp -r "$DIST/out/node-bridge-tools" "$DIST/archive/node-bridge-tools"
           cp LICENSE "$DIST/archive/"
           cp node-cli/THIRD-PARTY-NOTICES.md "$DIST/archive/"
-          cp node-cli/build/outputs/aar/node-cli-release.aar "$DIST/archive/" 2>/dev/null || true
+          cp node-cli/build/outputs/aar/node-cli-release.aar "$DIST/archive/"   # 缺件即失败（C4：不静默降级）
           tar -czf "$DIST/$NAME.tar.gz" -C "$DIST/archive" .
           ( cd "$DIST" && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256" )
           ls -la "$DIST" | grep -E '\.tar\.gz|\.sha256'

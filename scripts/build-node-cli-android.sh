@@ -9,7 +9,8 @@
 #   3) -Wl,-z,max-page-size=16384（16KB 页设备硬要求）；
 #   4) 产物是 exec 型 ELF：PIE + PT_INTERP=/system/bin/linker64（与 dlopen 库门禁相反）；
 #   5) 输出命名 libnode_cli.so（Android 打包只认 lib*.so；严禁与引擎 libnode.so 同名，D3）；
-#   6) npm/corepack 树取自同一棵源码树 deps/*（D6：零额外下载），壳脚本直出 npm/npx/corepack。
+#   6) npm 树取自同一棵源码树 deps/npm（D6：零额外下载）；corepack 取自单独钉版 tarball
+#      （规划 v2.2：Node 25 起树内无 deps/corepack）；壳脚本直出 npm/npx/corepack。
 #
 # 十步（规划 §4.2 ①–⑩；FR-001-010…023）：
 #   ① env：NDK toolchain 解析 + CC_host/CXX_host + 主机工具前置检查
@@ -116,7 +117,7 @@ if [[ $DRY_RUN -eq 1 ]]; then
   log "  ④ (cd $SRC && make -j${JOBS:-\$(nproc)})"
   log "  ⑤ node $PROVISION --inspect $SRC/out/Release/node   # ET_DYN/PT_INTERP=linker64/16KB"
   log "  ⑥ <ndk-llvm-strip> --strip-unneeded → $OUT/libnode_cli.so"
-  log "  ⑦ cp -r deps/{npm,corepack} → $TOOLS_DIR/{npm,corepack}（剪枝 test/docs 等）"
+  log "  ⑦ cp -r deps/npm + corepack 钉版树 → $TOOLS_DIR（剪枝 test/docs/man + node_modules/.bin + *.md；保留 node_modules）"
   log "  ⑧ node $PROVISION --manifest-only $OUT"
   log "  ⑨ 三壳 libnpm.so/libnpx.so/libcorepack.so（entry 出自 lock matrix.shellShims）"
   log "  ⑩ BUILD-METADATA.txt + FETCH-METADATA.json"
@@ -175,12 +176,15 @@ fi
 log "⑦ 收集 deps/npm（同源）+ $COREPACK_SRC（钉版 corepack）→ $TOOLS_DIR（剪枝 test/docs/fixture）"
 rm -rf "$TOOLS_DIR"
 mkdir -p "$TOOLS_DIR"
-prune_tree() {  # $1=dest  剔除测试/文档/大型 fixture（文件级取舍，不触碰保留字节——C1）
+prune_tree() {  # $1=dest：剔除 test/docs/man 与 node_modules/.bin 与 *.md；**保留 node_modules 本体**
+  # （v2.2.1 评审 Critical #1 修正：npm-cli.js 的裸包名依赖全靠 node_modules 解析，整删则 npm 必然
+  #  MODULE_NOT_FOUND；文件级取舍，不触碰保留文件字节——C1）
   local before after
   before=$(find "$1" -type f | wc -l)
-  find "$1" -type d \( -name test -o -name tests -o -name __tests__ -o -name docs -o -name markdocs \) -prune -exec rm -rf {} + 2>/dev/null || true
-  find "$1" -type d -name node_modules -prune -exec rm -rf {} + 2>/dev/null || true
+  find "$1" -type d \( -name test -o -name tests -o -name __tests__ -o -name docs -o -name markdocs -o -name man \) -prune -exec rm -rf {} + 2>/dev/null || true
+  find "$1" -type d -name .bin -path '*/node_modules/*' -prune -exec rm -rf {} + 2>/dev/null || true
   find "$1" -type f \( -name '*.md' -o -name '*.markdown' \) -delete 2>/dev/null || true
+  find "$1" -type d -empty -delete 2>/dev/null || true
   after=$(find "$1" -type f | wc -l)
   echo "$((before - after))"
 }

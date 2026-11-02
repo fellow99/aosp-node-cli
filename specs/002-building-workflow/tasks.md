@@ -3,7 +3,7 @@
 > 对应：[spec.md](./spec.md) / [plan.md](./plan.md)。原则：workflow 代码本批全量落地；真实跑批 ⬜ 待 tag 推送。
 
 ## T1 config-check Job 重排
-- [x] T1.1 触发面扩展（push tags v* / dispatch inputs node_version+android_api / paths-ignore docs）
+- [x] T1.1 触发面扩展（push tags v* / dispatch inputs node_version+android_api+apply_patches / push paths-ignore docs）
 - [x] T1.2 setup-node 显式钉版（修复 000 未显式 setup-node 的事实差距）
 - [x] T1.3 退出码断言修复（`|| code=$?` 先捕获后断言模式）— FR-002-004
 - [x] T1.4 lock JSON 语法门步骤（`node -e JSON.parse`）
@@ -23,7 +23,7 @@
 - [x] T3.2 artifact `lock-writeback` 上传；不 push main — FR-002-007
 
 ## T4 缓存与卫生
-- [x] T4.1 fetch 缓存（键含 sourceTar.sha256 前 12）— FR-002-008
+- [x] T4.1 fetch 缓存（path 限 `.dist/src/downloads` 源包原件；键含 lock 哈希——不缓存解压/编译树，保干净 runner 口径）— FR-002-008
 - [x] T4.2 凭据/RELEASE 参数不出现在 push 路径；日志无敏感值 — FR-002-009
 
 ## T5 验证与登记

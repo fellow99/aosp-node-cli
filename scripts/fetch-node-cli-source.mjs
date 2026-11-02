@@ -2,8 +2,8 @@
 /*
  * scripts/fetch-node-cli-source.mjs —— 单源钉选获取（001-building FR-001-001…004）
  *
- * 单源：node-v<ver>.tar.xz + 官方 SHASUMS256.txt（https://nodejs.org/dist/v<ver>/）。
- * 源码树内含 deps/npm 与 deps/corepack（决策 D6：npm/corepack 不单独下载）。
+ * 源：node-v<ver>.tar.xz + 官方 SHASUMS256.txt（https://nodejs.org/dist/v<ver>/，树内含 deps/npm，
+ * D6）；corepack 单独钉版 tarball（规划 v2.2：Node 25 起树内无 deps/corepack）。
  *
  * 纪律（宪法 C1/C2/C6）：
  *   - 钉选值（version/url/sha256）唯一出自 node-cli.lock.json releases[].builtFrom.sourceTar，
@@ -28,7 +28,7 @@
  *
  * 外部工具：tar -xJf（解压 .tar.xz；ubuntu runner 与 Git Bash 均预装 xz/tar）。
  *
- * 退出码：0 成功 · 2 sha256 校验失败 · 1 用法/IO/未钉选/缓存污染错误
+ * 退出码：0 成功 · 2 sha256 校验失败（含缓存污染/官方链断裂）· 1 用法/IO/未钉选错误
  */
 
 import fs from 'node:fs';
@@ -56,6 +56,7 @@ function usage() {
       '  --report-sha256  钉选引导：下载官方文件并按 SHASUMS256.txt 打印哈希（不解压、不写 lock）',
       '  --allow-unpinned lock 未钉选时以官方 SHASUMS256.txt 为现场权威继续（出处如实记录）',
       '  --force          忽略已下载缓存强制重下（默认哈希一致即跳过）',
+      '  --lock <path>    指定 lock 文件（默认仓库根 node-cli.lock.json；CI 未钉选场景测试用）',
     ].join('\n') + '\n',
   );
 }
@@ -178,8 +179,8 @@ if (args.includes('--help') || !nodeVer) {
   process.exit(nodeVer ? 0 : 1);
 }
 
-const lockPath = path.join(ROOT, LOCK_FILE);
-if (!fs.existsSync(lockPath)) die(`缺 ${LOCK_FILE}`);
+const lockPath = argOf('--lock') ? path.resolve(argOf('--lock')) : path.join(ROOT, LOCK_FILE);
+if (!fs.existsSync(lockPath)) die(`缺 lock 文件：${lockPath}`);
 const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
 const abi = lock.active?.abi ?? 'arm64-v8a';
 const rel = lock.releases.find((x) => x.version === nodeVer && x.abi === abi);
