@@ -75,7 +75,7 @@
 |---|---|---|
 | ① env | 解析 NDK toolchain 前缀（`<ndk>/toolchains/llvm/prebuilt/*/bin/aarch64-linux-android<api>-clang`）；导出 CC_host/CXX_host（FR-001-012） | NDK/源树/主机工具（make/python3/gcc）任一缺失 ⇒ exit 1 |
 | ② 版本一致性 | `--node` = lock `active.version` 校验 | 不一致 ⇒ exit 1（C5） |
-| ③ configure | 复刻 android_configure.py 的 PATH/CC/CXX/GYP_DEFINES 后【直呼】`./configure --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none`（无 `--shared`，D2；R2 as-built：wrapper 不透传、LDFLAGS env 不被读取——16KB 靠 NDK r28+ 默认 + 门禁⑦） | `--dry-run` 打印将执行命令 |
+| ③ configure | 复刻 android_configure.py 的 PATH/CC/CXX/GYP_DEFINES 后【直呼】`./configure --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none --v8-disable-temporal-support`（无 `--shared`，D2；R2 as-built：wrapper 不透传、LDFLAGS env 不被读取——16KB 靠 NDK r28+ 默认 + 门禁⑦；temporal 禁用系 CI 首跑链接失败的实测结论） | `--dry-run` 打印将执行命令 |
 | ④ make | `make -j$(nproc)` → `out/Release/node`（默认目标，R3 ⬜ 核实闭包） | 失败 ⇒ exit 2 |
 | ⑤ 形态校验 | `file` + provision `--inspect`：ET_DYN / PT_INTERP 恰 1 = linker64 / LOAD align 全 16384（FR-001-014） | 不过 ⇒ exit 2（不 strip、不投放） |
 | ⑥ strip | `llvm-strip --strip-unneeded` → `$OUT/libnode_cli.so`（FR-001-015） | 输出名取自 lock `active.name` |

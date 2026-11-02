@@ -15,10 +15,12 @@ cc-host      [wrapper path only] export CC_host/CXX_host in android_configure.py
              NOTE: build-node-cli-android.sh calls ./configure DIRECTLY and
              exports CC_host/CXX_host itself (step 1 env), so this id is
              normally NOT needed.
-temporal     [inert on 26.x] adds --v8-disable-temporal-support to the wrapper's
-             configure args. Measured fact (v26.13.0): configure.py uses
-             parse_known_args, so the flag is silently IGNORED -- it is not a
-             real option. Kept only for wrapper-path parity with runtime.
+temporal     [wrapper path only] adds --v8-disable-temporal-support to the
+             wrapper's configure args. CORRECTION (CI run 41449442265): the flag
+             IS a real option (configure.py:1277/2267); an earlier note claiming
+             parse_known_args makes it a no-op was wrong (truncated grep). The
+             build script passes it directly in its own ./configure invocation,
+             so this id is normally NOT needed.
 trap-handler force V8_TRAP_HANDLER_SUPPORTED=false GLOBALLY in
              deps/v8/src/trap-handler/trap-handler.h so host snapshot tools and
              the Android target stay consistent (same approach as runtime).

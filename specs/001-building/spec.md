@@ -47,10 +47,11 @@ C1/D8 禁止——补丁若需，后置在构建脚本内且逐条记录）。
 ### 3.2 交叉编译域（M1-T2~T3）
 
 - **FR-001-010（MUST）**：configure 纪律——**不带 `--shared`**（D2），追加 `--with-intl=none`
-  （D7），固化继承 `--openssl-no-asm --cross-compiling`；实现方式（R2 as-built）：android_configure.py
-  不透传额外参数 ⇒ 构建脚本等价复刻其环境后直呼 `./configure` 注入；16KB 页对齐经 NDK r28+
-  默认达成并由门禁⑦验证（configure 不读 LDFLAGS env——显式注入不可达，如实登记）；
-  `--v8-disable-temporal-support` 为 parse_known_args 幽灵参数（26.13.0 无此选项），不传入。
+  （D7）+ `--v8-disable-temporal-support`（与 runtime 引擎同口径；CI 首跑实测：不禁用则 Rust
+  crates 产 host 对象挂 aarch64 链接），固化继承 `--openssl-no-asm --cross-compiling`；实现方式
+  （R2 as-built）：android_configure.py 不透传额外参数 ⇒ 构建脚本等价复刻其环境后直呼
+  `./configure` 注入；16KB 页对齐经 NDK r28+ 默认达成并由门禁⑦验证（configure 不读 LDFLAGS
+  env——显式注入不可达，如实登记）。
 - **FR-001-011（MUST）**：NDK 工具链钉版——NDK 路径不存在 / toolchain 前缀解析失败 ⇒ 显式
   失败；NDK 版本回写 lock `builtFrom.ndk`（r30 线 ⬜ 首个 CI 实建钉版）。
 - **FR-001-012（MUST）**：host 工具链前置——CC_host/CXX_host（gcc/g++）显式导出供
