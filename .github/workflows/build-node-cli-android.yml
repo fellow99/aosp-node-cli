@@ -33,9 +33,9 @@ on:
         required: false
         default: ''
       apply_patches:
-        description: 'Patch ids (empty = bare configure, R1 attribution path; default: runtime-proven four)'
+        description: 'Patch ids (empty = bare configure, R1 attribution path; default: trap-handler,cpu-features)'
         required: false
-        default: 'cc-host,temporal,trap-handler,cpu-features'
+        default: 'trap-handler,cpu-features'
 
 permissions:
   contents: read
@@ -206,12 +206,18 @@ jobs:
       - name: Build（001 十步：configure 无 --shared + intl=none + 16KB → make → 门禁 → strip
           → 树收集/剪枝/manifest → 三壳 → 元数据；FR-001-010…023）
         env:
-          APPLY_PATCHES: ${{ github.event.inputs.apply_patches }}
+          APPLY_PATCHES_INPUT: ${{ github.event.inputs.apply_patches }}
         run: |
           ARGS=(--node "$NODE_VERSION" --api "$ANDROID_API"
                 --src "$DIST/src/node-src" --ndk "$ANDROID_NDK_HOME" --out "$DIST/out")
-          if [ -n "$APPLY_PATCHES" ]; then
-            ARGS+=(--apply-patch "$APPLY_PATCHES")   # 默认=runtime 已证四件（规划 R1 v2.2.1 as-built）
+          PATCHES="$APPLY_PATCHES_INPUT"
+          if [ -z "$PATCHES" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            # tag 推送无 dispatch 输入 ⇒ 默认集合（R1 v2.2.2：仅实际有效/必需两件——cc-host 由
+            # build 步① env 注入；temporal 标志在 26.13.0 是 parse_known_args 幽灵参数）
+            PATCHES="trap-handler,cpu-features"
+          fi
+          if [ -n "$PATCHES" ]; then
+            ARGS+=(--apply-patch "$PATCHES")
           else
             echo "::notice::bare configure round (R1 归因通道; --apply-patch omitted)"
           fi

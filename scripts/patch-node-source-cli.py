@@ -11,11 +11,14 @@ after the bare-configure round fails for the documented reason (risk R1).
 
 Patches (all idempotent; markers make re-runs no-ops)
 -----------------------------------------------------
-cc-host      export CC_host/CXX_host in android_configure.py so gyp builds the
-             host snapshot tools (mksnapshot/mkcodecache) with the host gcc/g++.
-temporal     add --v8-disable-temporal-support for Node >= 26: the Rust Temporal
-             crates have no upstream Android cross target and would build as
-             host x86_64 objects that fail the aarch64 link.
+cc-host      [wrapper path only] export CC_host/CXX_host in android_configure.py.
+             NOTE: build-node-cli-android.sh calls ./configure DIRECTLY and
+             exports CC_host/CXX_host itself (step 1 env), so this id is
+             normally NOT needed.
+temporal     [inert on 26.x] adds --v8-disable-temporal-support to the wrapper's
+             configure args. Measured fact (v26.13.0): configure.py uses
+             parse_known_args, so the flag is silently IGNORED -- it is not a
+             real option. Kept only for wrapper-path parity with runtime.
 trap-handler force V8_TRAP_HANDLER_SUPPORTED=false GLOBALLY in
              deps/v8/src/trap-handler/trap-handler.h so host snapshot tools and
              the Android target stay consistent (same approach as runtime).

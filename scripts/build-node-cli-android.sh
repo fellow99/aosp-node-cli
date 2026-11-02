@@ -6,14 +6,15 @@
 # 关键差异（docs/000-工程规划.md §3.1/§4）：
 #   1) 配置【不带 --shared】（D2）：默认 make 目标产出 node 可执行（而非 libnode.so 共享库）；
 #   2) --with-intl=none（D7：体积口径；与 runtime 的 small-icu 是有意分歧）；
-#   3) -Wl,-z,max-page-size=16384（16KB 页设备硬要求）；
+#   3) 16KB 页对齐 = NDK r28+ 默认 + 门禁⑦验证（as-built R2：configure.py 不读 LDFLAGS
+#      env，显式注入不可达——runtime 同款口径）；
 #   4) 产物是 exec 型 ELF：PIE + PT_INTERP=/system/bin/linker64（与 dlopen 库门禁相反）；
 #   5) 输出命名 libnode_cli.so（Android 打包只认 lib*.so；严禁与引擎 libnode.so 同名，D3）；
 #   6) npm 树取自同一棵源码树 deps/npm（D6：零额外下载）；corepack 取自单独钉版 tarball
 #      （规划 v2.2：Node 25 起树内无 deps/corepack）；壳脚本直出 npm/npx/corepack。
 #
 # 十步（规划 §4.2 ①–⑩；FR-001-010…023）：
-#   ① env：NDK toolchain 解析 + CC_host/CXX_host + 主机工具前置检查
+#   ① env：NDK toolchain 解析 + CC_host/CXX_host（等价 runtime cc-host 补丁，env 注入免改源）+ 主机工具前置检查
 #   ② 版本一致性（--node == lock active.version，C5）
 #   ③ configure：android_configure（无 --shared）+ --with-intl=none + 16KB LDFLAGS
 #   ④ make -j → out/Release/node
@@ -111,8 +112,9 @@ fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
   log "DRY-RUN：以下为将执行的命令（不执行）"
-  log "  ③ (cd $SRC && LDFLAGS='-Wl,-z,max-page-size=16384' ./android_configure.py $NDK $API arm64 --with-intl=none)"
-  log "     ※ 无 --shared（D2）；上游固化注入 --openssl-no-asm --cross-compiling"
+  log "  ③ (cd $SRC && PATH/GYP_DEFINES/CC/CXX/CC_host 等价复刻 android_configure.py 后直呼:)"
+  log "     ./configure --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none"
+  log "     ※ 无 --shared（D2）；16KB=NDK r30 默认+门禁⑦验证（R2 as-built：configure 不读 LDFLAGS env）"
   [[ -n "$APPLY_PATCH" ]] && log "  ③patch python3 $PATCHER --source $SRC --ndk $NDK --patch $APPLY_PATCH"
   log "  ④ (cd $SRC && make -j${JOBS:-\$(nproc)})"
   log "  ⑤ node $PROVISION --inspect $SRC/out/Release/node   # ET_DYN/PT_INTERP=linker64/16KB"
@@ -146,14 +148,20 @@ if [[ $COLLECT_ONLY -eq 0 ]]; then
       || die_gate ③ "补丁应用失败（marker 不匹配？核对源码树版本）"
   fi
 
-  # ── ③ configure（无 --shared，D2；intl=none，D7；16KB LDFLAGS）──────────
-  CONFIGURE="./android_configure.py"
-  [[ -f "$SRC/$CONFIGURE" ]] || CONFIGURE="./android-configure"   # 旧名兼容
-  [[ -f "$SRC/$CONFIGURE" ]] || die_env ③ "源码树缺 android_configure.py / android-configure"
-  log "③ $CONFIGURE $NDK $API arm64 --with-intl=none（LDFLAGS=16KB；无 --shared）"
-  ( cd "$SRC" && LDFLAGS="-Wl,-z,max-page-size=16384" \
-      bash -c "$CONFIGURE $NDK $API arm64 --with-intl=none" ) \
-    || die_gate ③ "configure 失败（R1/R2：记录报错清单后按需 --apply-patch，禁止盲目补丁）"
+  # ── ③ configure（无 --shared，D2；intl=none，D7）─────────────────────────
+  # as-built（R2 结论，实测 v26.13.0 树）：android_configure.py 恰收 3 参（多参即 Usage 退出）
+  # 且无 exec 位；configure.py 用 parse_known_args（未知参数被静默忽略——--v8-disable-temporal-support
+  # 并非真实选项）；不读 LDFLAGS env。故等价复刻 wrapper 的 PATH/CC/CXX/GYP_DEFINES 后【直呼
+  # ./configure】注入 --with-intl=none；CC_host/CXX_host 由步① env 导出；16KB 靠 NDK r28+ 默认，
+  # 门禁⑦验证。
+  [[ -f "$SRC/configure" ]] || die_env ③ "源码树缺 ./configure"
+  log "③ ./configure --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none（无 --shared，D2）"
+  ( cd "$SRC" &&
+    export PATH="$TOOLCHAIN_BIN:$PATH" \
+           CC="$CC" CXX="$CXX" CC_host="$CC_host" CXX_host="$CXX_host" \
+           GYP_DEFINES="target_arch=arm64 v8_target_arch=arm64 android_target_arch=arm64 host_os=linux OS=android android_ndk_path=$NDK" &&
+    ./configure --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none ) \
+    || die_gate ③ "configure 失败（记录报错清单后按需 --apply-patch，禁止盲目补丁）"
 
   # ── ④ make ───────────────────────────────────────────────────────────────
   J="${JOBS:-$(nproc)}"
