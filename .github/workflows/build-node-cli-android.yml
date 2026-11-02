@@ -1,0 +1,50 @@
+name: CI (scaffold) — aosp-node-cli
+
+# 000-scaffold 阶段的 CI 只做「配置期门禁」：
+#   - Gradle 配置/任务求值（无 .so 也必须通过 —— FR：二进制缺失不阻碍配置期）
+#   - provision.mjs 语法与退出码纪律自检（未投放 = 退出码 2 = 预期）
+# 真实的交叉编译 + 门禁 + Release 流水线在 M1 接入（替换本文件）。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  config-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Gradle configuration gate（无 .so 必须可配置）
+        run: gradle :node-cli:tasks --console=plain
+
+      - name: provision.mjs syntax + exit-code discipline
+        run: |
+          node --check tools/provision.mjs
+          # 未投放产物时 --check 的预期退出码是 2（未投放），其它非零码视为工具缺陷。
+          node tools/provision.mjs --check
+          code=$?
+          if [ "$code" -ne 2 ]; then
+            echo "provision --check 退出码=$code（预期 2=未投放）"; exit 1
+          fi
+
+      - name: scripts syntax
+        run: |
+          node --check scripts/fetch-node-cli-source.mjs
+          bash -n scripts/build-node-cli-android.sh
