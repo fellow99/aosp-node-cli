@@ -34,9 +34,9 @@
 
 | # | 用例 | 环境 | 前置 | 步骤 | 期望 | FR | 状态 |
 |---|---|---|---|---|---|---|---|
-| TC-003-19 | exec 门禁正样本（合成 fixture） | host | 合成 AArch64 PIE fixture（PT_INTERP=/system/bin/linker64、16KB 对齐、NEEDED ⊆ 白名单） | `node tools/provision.mjs --inspect <fixture>` | 七项 ✔（sha/size 为「记录」语义，draft 不比对）；exit 0 | FR-003-001 | ⬜ |
-| TC-003-20 | AAR 打包面 | host | TC-003-19 后 `--out` 投放 + `--shims` + `--assets` 投放 | `gradle :node-cli:assembleDebug` → 解包 AAR | `jni/arm64-v8a/libnode_cli.so` + `libnpm.so`/`libnpx.so`/`libcorepack.so` + `assets/node-bridge-tools/`（含 manifest.json）齐备；`useLegacyPackaging` 生效（jni 物理目录存在） | FR-003-001 | ⬜ |
-| TC-003-21 | META-INF 元数据自洽 | host | 同上 | 解包读 `META-INF/node-cli.properties` | 字段与 lock/产物逐一相等（version/abi/name/size/sha256/paired.runtime） | FR-003-002 | ⬜ |
+| TC-003-19 | exec 门禁正样本（合成 fixture） | host | 合成 AArch64 PIE fixture（PT_INTERP=/system/bin/linker64、16KB 对齐、NEEDED ⊆ 白名单） | `node tools/provision.mjs --inspect <fixture>` | 七项 ✔（sha/size 为「记录」语义，draft 不比对）；exit 0 | FR-003-001 | ✅ 2026-11-02（logs/20261102-1 A3） |
+| TC-003-20 | AAR 打包面 | host | TC-003-19 后 `--out` 投放 + `--shims` + `--assets` 投放 | `gradle :node-cli:assembleDebug` → 解包 AAR | `jni/arm64-v8a/libnode_cli.so` + `libnpm.so`/`libnpx.so`/`libcorepack.so` + `assets/node-bridge-tools/`（含 manifest.json）齐备；`useLegacyPackaging` 生效（jni 物理目录存在） | FR-003-001 | ✅ 2026-11-02（fixture 替身驱动，AAR 3.29MB；logs/20261102-1 A13） |
+| TC-003-21 | META-INF 元数据自洽 | host | 同上 | 解包读 `META-INF/node-cli.properties`（library 模块打包于 classes.jar 内） | 字段与 lock/产物逐一相等（version/abi/name/size/sha256/paired.runtime/npm.version/corepack.version/assets.sha256） | FR-003-002 | ✅ 2026-11-02（logs/20261102-1 A7/A13） |
 
 ## 三、事实记录区（P9/P6 类回填处，C6）
 

@@ -36,21 +36,21 @@
 | TC-07/08 | fetch 骨架语义 / 用法错误 | L1 | exit 2（SCAFFOLD 明示）/ exit 1（缺参） | ✅ |
 | TC-09/10/11 | build 骨架语义 / 用法错误 / 语法 | L1 | exit 2 / exit 1 / `bash -n` 过 | ✅ |
 | TC-12 | 二进制不入库 | L1 | 投放样本后 `git status --porcelain` 无 jniLibs/assets 条目 | ✅ |
-| TC-13 | exec 门禁负样本 | L2 | 无 PT_INTERP 的 dlopen 库样本 ⇒ ② 门禁失败、exit 2 | ⬜ 待 M1 真实样本 |
+| TC-13 | exec 门禁负样本 | L2 | 无 PT_INTERP 的 dlopen 库样本 ⇒ ② 门禁失败、exit 2 | ✅ 2026-11-02（合成 interpn 样本） |
 
 ### 2.2 构建门禁族（⬜ M1，`TC-M1-*` 为本索引预留编号；落地时写入模块 test-cases.md）
 
 | 用例族 ID | 名称 | 层 | 判据（可证伪） | 规划出处 | 状态 |
 |---|---|---|---|---|---|
-| TC-M1-001 | fetch 校验链 | L2 | 源包 sha256 == SHASUMS256.txt 声明值；解压树未改动（对原包再哈希一致） | 规划 §4.1/§4.2 ② | ⬜ |
+| TC-M1-001 | fetch 校验链 | L2 | 源包 sha256 == SHASUMS256.txt 声明值；解压树未改动（对原包再哈希一致） | 规划 §4.1/§4.2 ② | ✅ host 2026-11-02（真实下载三方一致 + corepack 钉选；CI 复跑待 tag） |
 | TC-M1-002 | 试编产物形态 | L2 | `file`/`readelf`：ET_DYN、PT_INTERP 恰 1 = linker64、LOAD align 全 16384 | 规划 §4.2 ⑥ | ⬜ |
-| TC-M1-003 | 门禁正样本全绿 | L2 | `provision --inspect` 七项全过、exit 0 | M1-T3 出口 | ⬜ |
-| TC-M1-004 | 门禁负样本判死 | L2 | dlopen 形态（PT_INTERP=0）样本 ⇒ ② FAIL；白名单外依赖样本 ⇒ ④ FAIL；4KB 对齐样本 ⇒ ⑦ FAIL；均 exit 2 且不落投放文件 | 规划 §6 | ⬜ |
-| TC-M1-005 | BANNED_IN_AAR | L2 | 目标目录预置 `libnode.so`/`libc++_shared.so` 后投放 ⇒ 报错 | `provision.mjs:246-250` ✅ 代码 / ⬜ 实测 | ⬜ |
-| TC-M1-006 | META-INF 元数据自洽 | L2 | properties 字段与 lock/产物逐一相等（version/abi/name/size/sha256/paired.runtime） | FR-000-036 | ⬜ |
-| TC-M1-007 | assets manifest 自洽 | L2 | 逐文件 sha256 复算一致；总 sha256 一致；树内无 ELF magic 文件 | 规划 §5/§6 | ⬜ |
-| TC-M1-008 | 壳脚本五判据 | L2 | 名称∈lock 白名单 / shebang=`#!/system/bin/sh` / exec 目标仅 libnode_cli.so+树内 .js / 无网络下载命令 / sha+size 入 lock | 规划 §6.1 | ⬜ |
-| TC-M1-009 | 幂等投放 | L2 | 同输入重跑不重复写（现有工具每次覆盖拷贝；released 后 sha 相同则内容等价——幂等口径在 M1-T5 一并收敛） | FR-000-034 | ⬜ |
+| TC-M1-003 | 门禁正样本全绿 | L2 | `provision --inspect` 七项全过、exit 0 | M1-T3 出口 | ✅ fixture 2026-11-02（真实产物待 CI） |
+| TC-M1-004 | 门禁负样本判死 | L2 | dlopen 形态（PT_INTERP=0）样本 ⇒ ② FAIL；白名单外依赖样本 ⇒ ④ FAIL；4KB 对齐样本 ⇒ ⑦ FAIL；均 exit 2 且不落投放文件 | 规划 §6 | ✅ fixture 2026-11-02（六负样本全 exit 2） |
+| TC-M1-005 | BANNED_IN_AAR | L2 | 目标目录预置 `libnode.so`/`libc++_shared.so` 后投放 ⇒ 报错 | `provision.mjs` BANNED 恒拒 | ✅ 2026-11-02（--check 判死 exit 2） |
+| TC-M1-006 | META-INF 元数据自洽 | L2 | properties 字段与 lock/产物逐一相等（version/abi/name/size/sha256/paired.runtime/npm.version/corepack.version/assets.sha256） | FR-000-036 | ✅ 2026-11-02（AAR classes.jar 内十字段） |
+| TC-M1-007 | assets manifest 自洽 | L2 | 逐文件 sha256 复算一致；总 sha256 一致；树内无 ELF magic 文件 | 规划 §5/§6 | ✅ 2026-11-02（verify 过 + 篡改/混入 ELF 均判死） |
+| TC-M1-008 | 壳脚本五判据 | L2 | 名称∈lock 白名单 / shebang=`#!/system/bin/sh` / exec 目标仅 libnode_cli.so+树内 .js / 无网络下载命令 / sha+size 入 lock | 规划 §6.1 | ✅ 2026-11-02（三壳全过 + 伪壳×4 判死） |
+| TC-M1-009 | 幂等投放 | L2 | 同输入重跑不重复写（--assets 先清残留再投放，totalSha256 稳定） | FR-000-034 | ✅ 2026-11-02（两次 stage 同摘要） |
 
 ### 2.3 归档/发布族（⬜ M1-T6 / M3）
 
@@ -105,11 +105,11 @@
 
 | 项 | 值 | 出处 |
 |---|---|---|
-| AAR 空容器 | `node-cli-debug.aar` **786 B** | 本机实测（TC-02 执行记录）✅ |
+| AAR 空容器（M0） | 786 B → **fixture 驱动全链 3,289,726 B**（2026-11-02：jni 四件 + npm/corepack 树 1591 文件 + manifest） | 本机实测 ✅ |
 | provision 未投放 | exit **2** + 「未投放」文案 | TC-05 ✅ |
 | fetch/build 骨架 | exit **2**（SCAFFOLD）/ exit **1**（缺参） | TC-07~10 ✅ |
 | lock | `26.13.0 / arm64-v8a`，size=0，sha256=""，status=draft | `node-cli.lock.json` ✅ |
 | 依赖白名单 | libc/libm/libdl/libz/libc++_shared（5 项） | lock `matrix.allowedNeeded` ✅ |
-| 工具规模 | provision 276 行 / fetch 58 行 / build 57 行 | 本批实测 ✅ |
+| 工具规模（M0 → 本批） | provision 276→~560 行 / fetch 58→~330 行 / build 57→~250 行（+patch-node-source-cli.py / lock-writeback.mjs / make-elf-fixture.mjs） | 本批实测 ✅ |
 
 > L2/L3/L4 产生首个真实基线后（体积、门禁耗时、回程时延），按本表格式追加；任何一项变化必须给出版本/配置层面的解释，否则视为回归。

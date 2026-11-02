@@ -7,7 +7,7 @@
  *   ELF 头 + 3 个程序头（PT_INTERP / PT_LOAD / PT_DYNAMIC）+ 节头表（.interp/.dynamic/.dynstr/.shstrtab）。
  *
  * 用法：
- *   node tools/make-elf-fixture.mjs --out <file> [--broken interp|align|type|machine|needed|none]
+ *   node tools/make-elf-fixture.mjs --out <file> [--broken interp|align|type|machine|needed|interpn|none]
  *
  * --broken 可选破坏项（用于负向断言）：
  *   interp  → PT_INTERP 内容错误（门禁② 必 ✘）
@@ -15,6 +15,7 @@
  *   type    → e_type=ET_EXEC=2（门禁① 必 ✘）
  *   machine → e_machine=x86-64=62（门禁③ 必 ✘）
  *   needed  → DT_NEEDED=libfake.so（门禁④ 必 ✘，白名单外）
+ *   interpn → PT_INTERP 数量=0（dlopen 库形态；门禁② 必 ✘——TC-13 负样本）
  */
 
 import fs from 'node:fs';
@@ -27,7 +28,7 @@ function argOf(name, fallback = null) {
 }
 const out = argOf('--out');
 const broken = argOf('--broken', 'none');
-if (!out || !['none', 'interp', 'align', 'type', 'machine', 'needed'].includes(broken)) {
+if (!out || !['none', 'interp', 'align', 'type', 'machine', 'needed', 'interpn'].includes(broken)) {
   process.stderr.write('用法: node tools/make-elf-fixture.mjs --out <file> [--broken interp|align|type|machine|needed|none]\n');
   process.exit(1);
 }
@@ -83,7 +84,7 @@ function phdr(i, type, flags, off, filesz, align) {
 }
 const ALIGN = broken === 'align' ? 0x1000 : 0x4000;
 const dynSize = dynEntries.length * 16;
-phdr(0, 3, 4, INTERP_OFF, interpStr.length, 1);            // PT_INTERP, R
+phdr(0, broken === 'interpn' ? 1 : 3, 4, INTERP_OFF, interpStr.length, 1);  // PT_INTERP（interpn ⇒ PT_LOAD，即 PT_INTERP=0 的 dlopen 形态）
 phdr(1, 1, 5, 0, 1024, ALIGN);                              // PT_LOAD, R+X
 phdr(2, 2, 6, DYN_OFF, dynSize, 8);                         // PT_DYNAMIC, RW
 

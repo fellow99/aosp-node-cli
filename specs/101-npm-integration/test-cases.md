@@ -31,13 +31,13 @@
 
 | # | 用例 | 环境 | 前置 | 步骤 | 期望 | FR | 状态 |
 |---|---|---|---|---|---|---|---|
-| TC-101-16 | npm/corepack 树构成与可执行冒烟 | host | 001 build 步⑦产物（真实源码树驱动） | ①检查 `.dist/out/node-bridge-tools/{npm,corepack}/`；②host node 执行三入口：`node …/npm/bin/npm-cli.js -v`、`npx-cli.js -v`、`corepack/dist/corepack.js --version` | ①入口在位；`test/`、docs、`man/`、`node_modules/.bin`、`*.md` 已剔除而 **`node_modules` 本体保留**（v2.2.1 剪枝口径）；无 ELF magic 文件；②三入口冒烟回程版本串（host Node 满足 engines；此为树完整性判据，非设备行为判据） | FR-101-001/003 | ⬜ |
-| TC-101-17 | 壳脚本内容与语法 | host | 同上 | 查看三壳内容；`sh -n` | 内容 = 001 §3.3 模板（shebang `#!/system/bin/sh` + `exec …libnode_cli.so <entry> "$@"`）；语法过；entry 与 lock `matrix.shellShims` 一致 | FR-101-001/004 | ⬜ |
-| TC-101-18 | manifest 登记树 | host | provision `--assets` 投放后 | 检查 manifest.json；篡改一个文件后 `--assets-mode verify` | `files` 含 `npm/…`/`corepack/…` 条目；篡改 ⇒ verify exit 2（漂移检出） | FR-101-003 | ⬜ |
-| TC-101-19 | 白名单放行 | host | jniLibs 投放主件+三壳后 `--check` | `node tools/provision.mjs --check` | exit 0（二分类白名单生效，三壳五判据全过） | FR-101-001 | ⬜ |
-| TC-101-20 | 伪壳判死（错误引用） | host | 伪壳内容 exec `libnode.so` 放入 jniLibs | `--check` | exit 2（判据③ 拒：内容含 `libnode.so`） | FR-101-001 | ⬜ |
-| TC-101-21 | 伪壳判死（网络命令） | host | 伪壳内容含 `curl …` | `--check` | exit 2（判据④ 拒：网络/下载关键词） | FR-101-001 | ⬜ |
-| TC-101-22 | 伪壳判死（错误 shebang） | host | 伪壳首行 `#!/bin/sh` 或二进制内容 | `--check` | exit 2（判据②拒 / 非 sh 壳形态走 ELF 规则拒） | FR-101-001 | ⬜ |
+| TC-101-16 | npm/corepack 树构成与可执行冒烟 | host | 001 build 步⑦产物（真实源码树驱动） | ①检查 `.dist/out/node-bridge-tools/{npm,corepack}/`；②host node 执行三入口：`node …/npm/bin/npm-cli.js -v`、`npx-cli.js -v`、`corepack/dist/corepack.js --version` | ①入口在位；`test/`、docs、`man/`、`node_modules/.bin`、`*.md` 已剔除而 **`node_modules` 本体保留**（v2.2.1 剪枝口径）；无 ELF magic 文件；②三入口冒烟回程版本串（host Node 满足 engines；此为树完整性判据，非设备行为判据） | FR-101-001/003 | ✅ 2026-11-02（logs/20261102-1） |
+| TC-101-17 | 壳脚本内容与语法 | host | 同上 | 查看三壳内容；`sh -n` | 内容 = 001 §3.3 模板（shebang `#!/system/bin/sh` + `exec …libnode_cli.so <entry> "$@"`）；语法过；entry 与 lock `matrix.shellShims` 一致 | FR-101-001/004 | ✅ 2026-11-02（logs/20261102-1） |
+| TC-101-18 | manifest 登记树 | host | provision `--assets` 投放后 | 检查 manifest.json；篡改一个文件后 `--assets-mode verify` | `files` 含 `npm/…`/`corepack/…` 条目；篡改 ⇒ verify exit 2（漂移检出） | FR-101-003 | ✅ 2026-11-02（logs/20261102-1） |
+| TC-101-19 | 白名单放行 | host | jniLibs 投放主件+三壳后 `--check` | `node tools/provision.mjs --check` | exit 0（二分类白名单生效，三壳五判据全过） | FR-101-001 | ✅ 2026-11-02（logs/20261102-1） |
+| TC-101-20 | 伪壳判死（错误引用） | host | 伪壳内容 exec `libnode.so` 放入 jniLibs | `--check` | exit 2（判据③ 拒：内容含 `libnode.so`） | FR-101-001 | ✅ 2026-11-02（logs/20261102-1） |
+| TC-101-21 | 伪壳判死（网络命令） | host | 伪壳内容含 `curl …` | `--check` | exit 2（判据④ 拒：网络/下载关键词） | FR-101-001 | ✅ 2026-11-02（logs/20261102-1） |
+| TC-101-22 | 伪壳判死（错误 shebang） | host | 伪壳首行 `#!/bin/sh` 或二进制内容 | `--check` | exit 2（判据②拒 / 非 sh 壳形态走 ELF 规则拒） | FR-101-001 | ✅ 2026-11-02（logs/20261102-1） |
 
 ## 三、事实记录区（回填处，C6）
 

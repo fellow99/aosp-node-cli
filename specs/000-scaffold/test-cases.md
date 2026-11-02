@@ -24,4 +24,4 @@
 - TC-04：✅。TC-05/06：✅（exit=2，文案含"未投放"与"draft 无锁值"）。
 - TC-07~11：✅（fetch exit=2/1 符合；build-sh exit=2/1 符合；bash -n 过）。
 - TC-12：✅（build/ 与 jniLibs 均被忽略，git status 干净分区内）。
-- TC-13：⬜ 待 M1 产出真实 dlopen 库样本后补测。
+- TC-13：✅ 2026-11-02（make-elf-fixture --broken interpn：PT_INTERP=0 ⇒ ② ✘ exit 2；logs/20261102-1 A5） 待 M1 产出真实 dlopen 库样本后补测。
