@@ -264,6 +264,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: node-cli-${{ env.NODE_VERSION }}-android-arm64-v8a
+          # include-hidden-files：.dist 为点开头目录，v4 默认隐藏过滤会吞掉全部匹配
+          # （Release 首跑实测：warning No files were found + 0 artifacts）；error 防再静默（C4）
+          include-hidden-files: true
+          if-no-files-found: error
           path: |
             .dist/node-cli-v*.tar.gz
             .dist/node-cli-v*.tar.gz.sha256

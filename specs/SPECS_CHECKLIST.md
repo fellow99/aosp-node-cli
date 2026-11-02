@@ -72,8 +72,8 @@
 |---|---|---|
 | `libnode_cli.so` 交叉编译全链（fetch/configure/make/strip） | M1-T1~T3 | 规划 §4 / R1–R3 |
 | provision 白名单扩展 + `--assets`/`--shims` + assets 静态性 + 幂等口径收敛 | M1-T5 | 规划 §6/§6.1 · plan §3.3-2 |
-| CI 真实流水线 + **修复 FR-000-041 断言的 `-e` 死代码问题** | M1-T6 | plan §6 ⚠️ · overall-plan §4.1 |
-| GitHub Release 归档 + lock 回写 `status=released`（含 gates 真实结论、ndk/flags/树摘要） | M1-T6 | 规划 §8/§10.1 |
+| ~~CI 真实流水线 + 修复 FR-000-041 断言~~ | ✅ M1-T6 完成（2026-11-02 CI 全绿，Release v26.13.0；断言修复随新 workflow 落地） | plan §6 · overall-plan §4.1 |
+| ~~GitHub Release 归档 + lock 回写~~ | ✅ 完成（Release 资产 tar.gz 45,955,095 B + 侧车；lock 已回写 size/sha256/ndk/flags/patch/树摘要/shims，gates 七键转 CI 实证） | 规划 §8/§10.1 |
 | README（中英）「AAR 内容」小节回写壳脚本/manifest | M1 文档项 | 规划 §5 ⚠️ · STRUCTURE §6-2 |
 | `VERSION_NAME=0.1.0` 是否可删 / POM 版本断言 | M1-T6/M3 发布前检查 | plan §3.3-3 [NEEDS CLARIFICATION] · TECH §5-6 |
 | lock `gates` 在 draft 下的取值语义（布尔 true vs null） | M1-T6 前拍板 | plan §3.3-1 [NEEDS CLARIFICATION] |

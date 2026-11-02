@@ -48,3 +48,24 @@
 
 1. 推送 tag `v26.13.0` 触发 CI（含 R1 归因通道：`apply_patches` 可留空裸跑）→ 回填 B1…B4 与 lock（writeback artifact 人工 PR）。
 2. CI 首产后：`python_arm64_api35` AVD 或 arm64 真机 + 消费方探针 App（M2-T1）→ 执行 TC-003-01…18 / TC-101-01…15 并回填事实区。
+
+## 7. CI 首跑补录（2026-11-02 晚，tag `v26.13.0` 推送后）
+
+**两轮流水线，问题-修复-复跑闭环：**
+
+| 轮次 | run | 提交 | 结果 | 事实 |
+|---|---|---|---|---|
+| 1 | 41449442265 | aeee9ab | **失败**（步④ make，≈2h13m 处） | `ld.lld: libnode_crates.a(temporal_rs/temporal_capi/diplomat_runtime…) is incompatible with aarch64linux`——runner 自带 cargo≥1.86 ⇒ temporal 默认开启，Rust crates 无 android cross target 产 host x86_64 对象 |
+| 2 | 41471561286 | ed3ab18 | **成功**（≈2h25m，19 步全绿） | 修复：build 步③ 直呼 `./configure` 追加 `--v8-disable-temporal-support`（真实选项，configure.py:1277/2267）；顺带更正上一提交把该标志误判为「幽灵参数」的记录（grep 截断所致） |
+
+**B 层（CI 侧）结果：B1 ✅ B2 ✅ B3 ✅ B4 ✅（G1/G2/G4 达成）**
+
+- B1（TC-M1-002）：真实 `out/Release/node` 过形态门禁（ET_DYN / PT_INTERP=/system/bin/linker64 / AArch64 / NEEDED⊆白名单(libm,libdl,liblog,libc++_shared,libc) / 16KB align=0x4000）；
+- B2（TC-M1-003/004）：strip 后 `libnode_cli.so` = **61,270,496 B（≈58.4 MiB）**，sha256 `7b540f41192d2b5d…`（lock 已回写，gates 七键转 CI 实证）；
+- B3（R2/R3 观测）：R3 已答（默认闭包含 embedtest，无 cctest/openssl-cli 挂链）；R4 顺带回填（预估带内偏下沿）；
+- B4（TC-PUB-001/002）：GitHub Release `v26.13.0` 资产 tar.gz 45,955,095 B + `.sha256` 侧车；lock 回写 `status=released`（依 CI 日志事实人工执行——正是 FR-002-007 设计的人工 PR 步）。
+
+**发现并已修的第三个问题（不影响 Release 资产）：**
+`actions/upload-artifact@v4` 默认 `include-hidden-files: false`，`.dist` 为点开头目录 ⇒ 三个 path 全被隐藏过滤吞掉（`if-no-files-found` 默认 warn ⇒ 步骤「绿」但 0 artifact——C4 形态的静默降级）。修复：`include-hidden-files: true` + `if-no-files-found: error`；lock-writeback 回写物因此首跑缺失，改依 CI 日志事实人工回写（本文件证据链完整）。
+
+**C 层（设备侧）更新**：产物前置已就绪（Release 可下载 arm64 libnode_cli.so）；剩余前置 = 消费方 PTY 载体与环境引导层（M2-T1）。arm64 AVD（python_arm64_api35）在位待用。

@@ -10,8 +10,8 @@
       "abi": "arm64-v8a",
       "androidApi": 24,
       "name": "libnode_cli.so",
-      "size": 0,
-      "sha256": "",
+      "size": 61270496,
+      "sha256": "7b540f41192d2b5d2e7a40848aa81ca45006d0f5c2fdc02ffbc5c0e1cda7eb3d",
       "pairedRuntime": {
         "coordinates": "io.github.fellow99:node-runtime:26.13.0",
         "releaseTag": "v26.13.0"
@@ -22,25 +22,45 @@
           "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0.tar.xz",
           "sha256": "263f639ecfa7a17b49438d76cdbf9aff73179e3c7cb789da69b900718427fa2e"
         },
-        "ndk": "TBD (first CI build pins NDK line + version; plan: r30 / 30.0.16248370)",
-        "flags": "TBD: android_configure WITHOUT --shared; --with-intl=none; -Wl,-z,max-page-size=16384; llvm-strip --strip-unneeded",
-        "patch": "none",
+        "ndk": "30.0.16248370 (NDK r30; CI run 41471561286 / tag v26.13.0)",
+        "flags": "direct ./configure (replicates android_configure env) WITHOUT --shared (D2): --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none --v8-disable-temporal-support; CC_host/CXX_host via env; 16KB = NDK r28+ default verified by gate 7; llvm-strip --strip-unneeded",
+        "patch": "trap-handler,cpu-features (CI run 41471561286; cc-host via env injection; temporal disabled via configure flag)",
         "npm": {
-          "version": "",
+          "version": "11.20.0",
           "path": "deps/npm",
-          "fileCount": 0,
-          "sha256": ""
+          "fileCount": 1540,
+          "sha256": "57244a8c88aeaf6ce3cdcef8d0bebe96feae12fd435790c2d41e478d8f53346f"
         },
         "corepack": {
-          "version": "",
+          "version": "0.36.0",
           "path": "corepack",
-          "fileCount": 0,
-          "sha256": ""
+          "fileCount": 51,
+          "sha256": "a0aa6c9e5a23d1b12edfaac659e5eb032ea3f5819360c1f8e5423e037d8dad40",
+          "sourceTar": "https://registry.npmjs.org/corepack/-/corepack-0.36.0.tgz"
         },
-        "shims": [],
+        "shims": [
+          {
+            "name": "libnpm.so",
+            "entry": "npm/bin/npm-cli.js",
+            "sha256": "4600e57f7c5b9b8dbb1aba95208be9716edf17c0375e1e8dff435d4d945fe236",
+            "size": 358
+          },
+          {
+            "name": "libnpx.so",
+            "entry": "npm/bin/npx-cli.js",
+            "sha256": "4ec571e9488a7e0287c19248606e0b666a2fe48f028dd9f4339ac8729a431255",
+            "size": 358
+          },
+          {
+            "name": "libcorepack.so",
+            "entry": "corepack/dist/corepack.js",
+            "sha256": "4f90c5c2103325e68e2986e877f98144830e1f36075b46af22bd4b4122dcbcab",
+            "size": 382
+          }
+        ],
         "assetsManifest": {
-          "fileCount": 0,
-          "totalSha256": ""
+          "fileCount": 1591,
+          "totalSha256": "124c54c0d3e6fd2a8748d7383979c211cee96efe13512a0092d58edbbd39053b"
         },
         "corepackTar": {
           "version": "0.36.0",
@@ -61,7 +81,7 @@
         "coordinates": "io.github.fellow99:node-cli:26.13.0",
         "published": false
       },
-      "status": "draft"
+      "status": "released"
     }
   ],
   "matrix": {

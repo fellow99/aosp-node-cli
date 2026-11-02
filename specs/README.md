@@ -2,7 +2,7 @@
 
 **项目名称：** `aosp-node-cli`（Maven 坐标 `io.github.fellow99:node-cli`）
 **需求：** **000-scaffold 工程搭建**（模块化扩展：001/002/003/101 已按规划 §10.2 立项）· 规范文档存放目录：`specs/`
-**制品版本：** `26.13.0`（**draft**，恒等于配对 Node 版本；M1 首个真实 CI 构建后回写事实）
+**制品版本：** `26.13.0`（**released**——CI run 41471561286 / GitHub Release `v26.13.0`，恒等于配对 Node 版本）
 **技术栈：** Gradle 9.4.1 + AGP 9.2.1（AAR 容器，零 Kotlin/Java 源）+ vanniktech 0.37.0（Central 发布面）+ 纯 Node `.mjs` exec 型 ELF 门禁 + bash 交叉编译脚本（真实编译 ⬜ CI）
 **文档生成时间：** 2026-11-02 · **最后更新：** 2026-11-02（模块 001/002/003/101 立项批次）
 

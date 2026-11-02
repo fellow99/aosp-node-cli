@@ -255,7 +255,7 @@ const meta = {
   tool: "build-node-cli-android.sh",
   node: rel.version, abi: rel.abi, androidApi: rel.androidApi,
   ndk: process.argv[6],
-  configure: "android_configure WITHOUT --shared (D2) + --with-intl=none (D7) + LDFLAGS -Wl,-z,max-page-size=16384",
+  configure: "direct ./configure (replicates android_configure env) WITHOUT --shared (D2): --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none --v8-disable-temporal-support; CC_host/CXX_host via env; 16KB = NDK r28+ default verified by gate 7",
   patch: process.argv[3] === "" ? "none" : process.argv[3],
   pruned: { npm: Number(process.argv[4]), corepack: Number(process.argv[5]) },
   builtAtUTC: new Date().toISOString(),

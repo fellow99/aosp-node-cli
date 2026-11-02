@@ -43,7 +43,7 @@
 | 用例族 ID | 名称 | 层 | 判据（可证伪） | 规划出处 | 状态 |
 |---|---|---|---|---|---|
 | TC-M1-001 | fetch 校验链 | L2 | 源包 sha256 == SHASUMS256.txt 声明值；解压树未改动（对原包再哈希一致） | 规划 §4.1/§4.2 ② | ✅ host 2026-11-02（真实下载三方一致 + corepack 钉选；CI 复跑待 tag） |
-| TC-M1-002 | 试编产物形态 | L2 | `file`/`readelf`：ET_DYN、PT_INTERP 恰 1 = linker64、LOAD align 全 16384 | 规划 §4.2 ⑥ | ⬜ |
+| TC-M1-002 | 试编产物形态 | L2 | `file`/`readelf`：ET_DYN、PT_INTERP 恰 1 = linker64、LOAD align 全 16384 | 规划 §4.2 ⑥ | ✅ CI 2026-11-02（run 41471561286：门禁化校验真实 out/Release/node，①②③⑦ 全过） |
 | TC-M1-003 | 门禁正样本全绿 | L2 | `provision --inspect` 七项全过、exit 0 | M1-T3 出口 | ✅ fixture 2026-11-02（真实产物待 CI） |
 | TC-M1-004 | 门禁负样本判死 | L2 | dlopen 形态（PT_INTERP=0）样本 ⇒ ② FAIL；白名单外依赖样本 ⇒ ④ FAIL；4KB 对齐样本 ⇒ ⑦ FAIL；均 exit 2 且不落投放文件 | 规划 §6 | ✅ fixture 2026-11-02（六负样本全 exit 2） |
 | TC-M1-005 | BANNED_IN_AAR | L2 | 目标目录预置 `libnode.so`/`libc++_shared.so` 后投放 ⇒ 报错 | `provision.mjs` BANNED 恒拒 | ✅ 2026-11-02（--check 判死 exit 2） |
@@ -56,8 +56,8 @@
 
 | 用例族 ID | 名称 | 层 | 判据（可证伪） | 规划出处 | 状态 |
 |---|---|---|---|---|---|
-| TC-PUB-001 | Release 归档自洽 | L3 | tar.gz 内容齐（so+壳+树+manifest+元数据+许可）；`.sha256` 与归档一致 | 规划 §10.1 | ⬜ |
-| TC-PUB-002 | lock 回写齐备 | L3 | `status=released`；size/sha256/ndk/flags/树摘要非占位 | G4 | ⬜ |
+| TC-PUB-001 | Release 归档自洽 | L3 | tar.gz 内容齐（so+壳+树+manifest+元数据+许可）；`.sha256` 与归档一致 | 规划 §10.1 | ✅ 2026-11-02（Release v26.13.0 资产：tar.gz 45,955,095 B + 侧车 109 B） |
+| TC-PUB-002 | lock 回写齐备 | L3 | `status=released`；size/sha256/ndk/flags/树摘要非占位 | G4 | ✅ 2026-11-02（依 CI 日志事实人工回写；upload-artifact 隐藏目录过滤致回写物 artifact 缺失一次，已修复 include-hidden-files+error） |
 | TC-PUB-003 | publishToMavenLocal 结构断言 | L5 | POM 坐标 = `io.github.fellow99:node-cli:<CLI_VERSION>`；AAR 内含 jni/ + assets/ + manifest | 规划 §10.1 §4 | ⬜ |
 | TC-PUB-004 | Central 坐标解析 | L5 | Maven Central 可解析 26.13.0；lock `published=true` | A7 | ⬜ |
 
@@ -79,7 +79,7 @@
 | 模块 | 正典位置 | 用例段 | 环境 | 状态 |
 |---|---|---|---|---|
 | 001-building | tasks T2/T3/T4 内嵌（fetch/build/provision 各步验收）+ 本表 TC-M1-001…009 归属本模块 | TC-001-xx（host 子集） | host | 随本批 dev 执行；CI 子集 ⬜ |
-| 002-building-workflow | tasks T5 内嵌（YAML/断言模式/结构）+ 本表 TC-PUB-001/002 归属本模块 | TC-002-xx | host | 随本批 dev 执行；跑批 ⬜ 待 tag |
+| 002-building-workflow | tasks T5 内嵌（YAML/断言模式/结构）+ 本表 TC-PUB-001/002 归属本模块 | TC-002-xx | host+CI | ✅ 跑批 2026-11-02（config-check 与发布流水线均绿；首跑 temporal 挂链→修复→二跑全绿） |
 | 003-cli | [`003-cli/test-cases.md`](./003-cli/test-cases.md) | TC-003-01…18（device）/ 19…21（host） | host+device | host 随本批执行；device ⬜ 待 CI 首产 + M2-T2 |
 | 101-npm-integration | [`101-npm-integration/test-cases.md`](./101-npm-integration/test-cases.md) | TC-101-01…15（device）/ 16…22（host） | host+device | host 随本批执行；device ⬜（P10 未过 ⇒ P6/P7 族 BLOCKED 机制） |
 
@@ -111,5 +111,6 @@
 | lock | `26.13.0 / arm64-v8a`，size=0，sha256=""，status=draft | `node-cli.lock.json` ✅ |
 | 依赖白名单 | libc/libm/libdl/libz/libc++_shared（5 项） | lock `matrix.allowedNeeded` ✅ |
 | 工具规模（M0 → 本批） | provision 276→~560 行 / fetch 58→~330 行 / build 57→~250 行（+patch-node-source-cli.py / lock-writeback.mjs / make-elf-fixture.mjs） | 本批实测 ✅ |
+| **CI 首产（v26.13.0 / run 41471561286）** | libnode_cli.so（strip 后）**61,270,496 B ≈ 58.4 MiB**（sha256 `7b540f41…`）；归档 tar.gz **45,955,095 B** + 侧车；整链 ≈ 2h25m（fetch 命中缓存后） | CI ✅ 2026-11-02 |
 
 > L2/L3/L4 产生首个真实基线后（体积、门禁耗时、回程时延），按本表格式追加；任何一项变化必须给出版本/配置层面的解释，否则视为回归。
