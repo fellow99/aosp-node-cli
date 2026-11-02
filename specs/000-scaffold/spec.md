@@ -1,9 +1,9 @@
 # 000 · 工程搭建（scaffold）功能规格
 
-> 模块：000-scaffold · 需求编号：000-scaffold · 状态：已实现（scaffold 级）
+> 模块：000-scaffold · 需求编号：000-scaffold · 状态：已实现（scaffold 级；技术方案见 [plan.md](./plan.md)，2026-11-02 as-built 补齐）
 > 所属工程：aosp-node-cli · 规划基线：[`docs/000-工程规划.md`](../../docs/000-工程规划.md)
-> （本仓 000-scaffold 把 pty 仓的 spec/plan/test-cases 四件套折叠为三件：验收场景并入本文件，
-> plan 内容并入规划基线与 tasks.md。）
+> （000-scaffold 曾把 pty 仓的 spec/plan/test-cases 四件套折叠为三件（验收场景并入本文件、
+> plan 并入规划基线与 tasks.md）；2026-11-02 按 specs-as-built 方法补回 `plan.md`，本文件其余内容不变。）
 
 ## 1. 目的
 
