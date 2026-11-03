@@ -18,6 +18,7 @@
 - [ ] T3.3 TC-003-20 META-INF properties 字段与 lock 一致
 
 ## T4 设备侧执行（⬜ M2-T1/T2 窗口）
-- [ ] T4.1 探针脚本/app 用例实现（依赖消费方 PTY 载体立项）
-- [ ] T4.2 TC-003-01…17 执行 + 事实区回填（含 P9 JIT 计时、Intl/Temporal 实际行为）
+- [x] T4.1 探针 App 实现（`probe-app/`，2026-11-03：ProcessBuilder 非交互子集，TC-003-01…17
+  可执行化 + TC-MAT-01 树完整性自检；TC-003-18 REPL 按 BLOCKED 登记——PTY 语义归终端 App）
+- [ ] T4.2 TC-003-01…17 执行 + 事实区回填（探针已就绪，待 arm64 设备跑批）
 - [ ] T4.3 结论回写规划 §7.1 / §11-R8 与 README 能力边界小节

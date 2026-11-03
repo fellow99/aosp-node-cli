@@ -33,6 +33,13 @@ android {
             abiFilters += "arm64-v8a"
         }
     }
+    androidResources {
+        // npm 树固有 dot 文件（npm/.npmrc、node-gyp/.release-please-manifest.json 等 5 件）
+        // 被 aapt 默认 ignoreAssetsPattern 的 `.*` token 丢弃——CI Release AAR 实证 2003<预期
+        // （2026-11-03 探针实现期发现）。覆写去掉 `.*`（与 `_<dir>` 同理）；消费方 App 须同样
+        // 覆写（见 docs §7 契约）。
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~"
+    }
     packaging {
         jniLibs {
             // exec 型工具与 dlopen 库（node-pty）相反：必须物理落盘（extractNativeLibs=true）。
