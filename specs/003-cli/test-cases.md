@@ -48,7 +48,7 @@
 | `typeof Temporal` 实际行为 | ⬜ | — |
 | process.platform / os.arch() | ⬜ | — |
 | process.execPath 实际值 | ⬜ | — |
-| LD_LIBRARY_PATH 缺失时报错形态 | ⬜ | — |
+| LD_LIBRARY_PATH 缺失时报错形态 | ✅ 2026-11-03 设备实证（API 37）：无论缺失与否，linker 报 `CANNOT LINK EXECUTABLE: library "libc++_shared.so" not found: needed by main executable`——**Android 16+ 对 app 孵化 exec 不采纳 LD_LIBRARY_PATH**（export/prefix 两形态 run-as 对照均失效）⇒ 产品改静态 libc++（规划 v2.3.1，重编后此探针应双态 PASS） | — |
 | 设备/系统版本 | ⬜ | — |
 
 ## 四、禁止的判据（沿用 overall-test-cases 纪律）

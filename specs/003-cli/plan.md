@@ -15,7 +15,7 @@
 |---|---|---|
 | 产品件 | `jni/arm64-v8a/libnode_cli.so`（exec 型 PIE，NDK r30 交叉编译，intl=none） | 001 产出、002 归档 |
 | 启动方式 | 消费方 PTY：`pty.spawn(<nativeLibraryDir>/libnode_cli.so, argv, env)`；或 `$HOME/bin/node` symlink 经 PATH 解析 | 规划 §3 图 / §7 |
-| 运行时配对 | `node-runtime:<ver>` 同版本上线（`libc++_shared.so` 供给方）；`LD_LIBRARY_PATH=<nativeLibraryDir>` 必注入 | 规划 §2/§7 |
+| 运行时配对 | `node-runtime:<ver>` 同版本上线；`LD_LIBRARY_PATH` **v2.3.1 契约修订**：设备实证 Android 16+ 对 app 孵化 exec 不采纳 ⇒ 产物改静态 libc++（`-static-libstdc++`），本变量不再承担链接职责 | 规划 §2/§7 |
 | 环境注入 | 消费方环境引导层（bridge 载荷或 Kotlin）按 §3 模板注入 | FR-003-010 验收载体 |
 | 探针执行面 | host：门禁/打包检查（`node`/`gradle`/`unzip`）；设备：adb shell + 真机 PTY App（M2-T1）⬜ | 用例正典分列 |
 
@@ -31,7 +31,7 @@ C8：本文件与 [test-cases.md](./test-cases.md) 先于设备侧验收存在�
 HOME=<filesDir>/home
 TMPDIR=<filesDir>/tmp
 PATH=<nativeLibraryDir>:$HOME/bin:/system/bin
-LD_LIBRARY_PATH=<nativeLibraryDir>
+LD_LIBRARY_PATH=<nativeLibraryDir>   # ⚠️ v2.3.1：linker 不再采纳（静态 libc++ 后无链接职责，保留为兼容项）
 NODE_TOOLS_DIR=<filesDir>/node-bridge-tools
 NODE_NATIVE_DIR=<nativeLibraryDir>
 ```
