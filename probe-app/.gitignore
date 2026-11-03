@@ -2,3 +2,6 @@
 build/
 local.properties
 app/libs/*.aar
+
+# libc++_shared.so（配对 runtime 供给件，C3 不入库）
+app/src/main/jniLibs/**/*.so

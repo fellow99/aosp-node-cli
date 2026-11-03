@@ -208,7 +208,20 @@ public class MainActivity extends Activity {
         try {
             homeDir.mkdirs();
             new File(getFilesDir(), "tmp").mkdirs();
-            ProcessBuilder pb = new ProcessBuilder(argv);
+            // 实测（2026-11-03，API 37 x86_64+ARM 翻译镜像）：ProcessBuilder 传入的
+            // LD_LIBRARY_PATH 对 exec 型产物不生效（arm64 linker 报 CANNOT LINK），而
+            // sh 脚本内前缀赋值生效（run-as 对照实验；Termux 同款模式）。统一路由：
+            //   /system/bin/sh -c 'export LD_LIBRARY_PATH=<dir>; exec "$0" "$@"' <argv…>
+            // envIn 里删除 LD_LIBRARY_PATH（值空）⇒ 脚本不注入（保住负路径探针语义）。
+            String ldPath = envIn.get("LD_LIBRARY_PATH");
+            List<String> wrapped = new ArrayList<>();
+            wrapped.add("/system/bin/sh");
+            wrapped.add("-c");
+            wrapped.add(ldPath == null || ldPath.isEmpty()
+                    ? "exec \"$0\" \"$@\""
+                    : "export LD_LIBRARY_PATH='" + ldPath + "'; exec \"$0\" \"$@\"");
+            wrapped.addAll(argv);
+            ProcessBuilder pb = new ProcessBuilder(wrapped);
             pb.directory(cwd != null ? cwd : getFilesDir());
             pb.redirectErrorStream(false);
             Map<String, String> env = pb.environment();
@@ -216,7 +229,7 @@ public class MainActivity extends Activity {
             env.putAll(envIn);
             env.put("ANDROID_ROOT", "/system");
             env.put("ANDROID_DATA", "/data");
-            if (envIn.get("LD_LIBRARY_PATH") == null) env.remove("LD_LIBRARY_PATH");
+            env.remove("LD_LIBRARY_PATH"); // 只经 sh 脚本注入，进程层不再传
             Process p = pb.start();
             if (stdin != null) {
                 try (OutputStream os = p.getOutputStream()) {

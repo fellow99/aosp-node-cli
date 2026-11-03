@@ -141,6 +141,12 @@ if [[ $COLLECT_ONLY -eq 0 ]]; then
   [[ -x "$STRIP" ]] || die_env ① "llvm-strip 不存在：$STRIP"
   for t in make python3 gcc g++; do command -v "$t" >/dev/null || die_env ① "主机工具缺失：$t（build-essential/make/python3 前置）"; done
   export CC_host="$(command -v gcc)" CXX_host="$(command -v g++)"   # FR-001-012（或经 --apply-patch cc-host 注入）
+  # v2.3.1（2026-11-03 设备探针实证，规划 §7 契约修订）：Android 16+ 对 app 孵化的
+  # exec 型进程不再采纳 LD_LIBRARY_PATH（export/prefix 两形态均失效，run-as 对照实验），
+  # libc++_shared 的「runtime 供给 + env 注入」契约不可达 => 目标链接改静态 libc++
+  # （NDK 官方 -static-libstdc++），产物 DT_NEEDED 只剩系统库，彻底自包含。
+  # 注入面 = CXX（gyp 对含 C++ 源的目标用 CXX 链接；CC 不加，纯 C 目标不接受该 flag）。
+  CXX="$CXX -static-libstdc++"
   log "① toolchain=$TOOLCHAIN_BIN CC_host=$CC_host API=$API"
 
   # ── ③ patch（显式子集；默认无补丁——FR-001-013）─────────────────────────
