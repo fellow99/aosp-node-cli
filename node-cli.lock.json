@@ -1,5 +1,5 @@
 {
-  "$comment": "node-cli single source of truth: version = paired Node version (mirrors aosp-node-runtime). Binaries are NOT committed; CI builds libnode_cli.so and tools/provision.mjs deploys it. The current entry is a DRAFT placeholder: size/sha256 are pinned by the first real CI build and written back here. See docs/000-工程规划.md.",
+  "$comment": "node-cli single source of truth: version = paired Node version (mirrors aosp-node-runtime). Binaries are NOT committed; CI builds libnode_cli.so and tools/provision.mjs deploys it. RE-CUT v2.3.1 (static libc++, 2026-11-03): re-opened DRAFT pending the re-cut CI build. The current entry is a DRAFT placeholder: size/sha256 are pinned by the first real CI build and written back here. See docs/000-工程规划.md.",
   "active": {
     "version": "26.13.0",
     "abi": "arm64-v8a"
@@ -10,8 +10,8 @@
       "abi": "arm64-v8a",
       "androidApi": 24,
       "name": "libnode_cli.so",
-      "size": 61270496,
-      "sha256": "7b540f41192d2b5d2e7a40848aa81ca45006d0f5c2fdc02ffbc5c0e1cda7eb3d",
+      "size": 0,
+      "sha256": "",
       "pairedRuntime": {
         "coordinates": "io.github.fellow99:node-runtime:26.13.0",
         "releaseTag": "v26.13.0"
@@ -81,7 +81,7 @@
         "coordinates": "io.github.fellow99:node-cli:26.13.0",
         "published": false
       },
-      "status": "released"
+      "status": "draft"
     }
   ],
   "matrix": {
