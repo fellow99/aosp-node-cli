@@ -10,8 +10,8 @@
       "abi": "arm64-v8a",
       "androidApi": 24,
       "name": "libnode_cli.so",
-      "size": 0,
-      "sha256": "",
+      "size": 62155912,
+      "sha256": "eb51b439d2a8164bc2e4be233b9a363b6def736a000feb432ce72702ee28b86c",
       "pairedRuntime": {
         "coordinates": "io.github.fellow99:node-runtime:26.13.0",
         "releaseTag": "v26.13.0"
@@ -23,7 +23,7 @@
           "sha256": "263f639ecfa7a17b49438d76cdbf9aff73179e3c7cb789da69b900718427fa2e"
         },
         "ndk": "30.0.16248370 (NDK r30; CI run 41471561286 / tag v26.13.0)",
-        "flags": "direct ./configure (replicates android_configure env) WITHOUT --shared (D2): --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none --v8-disable-temporal-support; CC_host/CXX_host via env; 16KB = NDK r28+ default verified by gate 7; llvm-strip --strip-unneeded",
+        "flags": "direct ./configure (replicates android_configure env) WITHOUT --shared (D2): --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none --v8-disable-temporal-support; CXX += -static-libstdc++ (v2.3.1: self-contained, no libc++_shared needed); 16KB = NDK r28+ default verified by gate 7; llvm-strip --strip-unneeded",
         "patch": "trap-handler,cpu-features (CI run 41471561286; cc-host via env injection; temporal disabled via configure flag)",
         "npm": {
           "version": "11.20.0",
@@ -81,7 +81,7 @@
         "coordinates": "io.github.fellow99:node-cli:26.13.0",
         "published": false
       },
-      "status": "draft"
+      "status": "released"
     }
   ],
   "matrix": {
