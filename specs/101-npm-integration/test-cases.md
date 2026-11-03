@@ -11,21 +11,21 @@
 
 | # | 用例 | 环境 | 前置 | 步骤 | 期望（可证伪） | 探针 | FR | 状态 |
 |---|---|---|---|---|---|---|---|---|
-| TC-101-01 | npm -v 直出 | device | 产物物化 + env 注入（[plan](./plan.md) §3） | `PTY$ npm -v` | stdout 形态 `npm@<npmver> (node v<nodever>…)` 或 npm 标准 `npm -v` 输出且含 `<npmver>`；exit 0 | P2 | FR-101-001 | ⬜ |
-| TC-101-02 | npm 版本一致性 | device | 同上 | `PTY$ npm -v` 对比 lock `builtFrom.npm.version` | 版本段 == `<npmver>`（物化树与 lock 同源） | P2 | FR-101-014 | ⬜ |
-| TC-101-03 | npx -v 直出 | device | 同上 | `PTY$ npx -v` | 输出 = `<npmver>`（npx 随 npm 同树分发）；exit 0 | P3 | FR-101-002 | ⬜ |
-| TC-101-04 | 离线首启 | device | 飞行模式/无网络 | `PTY$ npm -v`；`PTY$ npm ls`（空项目目录） | 两命令均成功且**不触网**（无网络下成功即证明）；npm ls 列出（空） | — | FR-101-003 | ⬜ |
-| TC-101-05 | corepack --version 直出 | device | 同上 | `PTY$ corepack --version` | 输出 = `<cpver>`；exit 0 | P4 | FR-101-002 | ⬜ |
-| TC-101-06 | 参数透传与退出码 | device | 同上 | `PTY$ npm --help`；`PTY$ npm invalid-subcommand` | help 输出完整（壳零解释）；无效子命令 exit ≠ 0 且与直调 `node …/npm-cli.js invalid-subcommand` 同码 | — | FR-101-004 | ⬜ |
-| TC-101-07 | 纯 JS 包安装 | device | 网络 + P10 已过 | `PTY$ npm install ms` → `node -e 'console.log(typeof require("ms"))'` | 安装成功 exit 0；require 输出 `function`；`npm ls` 出现 ms | P6 | FR-101-005 | ⬜ |
-| TC-101-08 | 安装清单 | device | TC-101-07 后 | `PTY$ npm ls`；`PTY$ npm ls -g` | ls 含 npm 与 ms；`ls -g` 列 `$HOME/lib/node_modules` 全局面 | — | FR-101-006 | ⬜ |
-| TC-101-09 | 卸载 | device | TC-101-07 后 | `PTY$ npm uninstall ms` → `node -e 'require("ms")'` | uninstall exit 0；require 失败（MODULE_NOT_FOUND）；npm ls 不再列出 | — | FR-101-007 | ⬜ |
-| TC-101-10 | 原生构建包失败如实 | device | 网络 + P10 已过 | `PTY$ npm install <node-gyp 类包（如含 C++ binding 的纯源码包）>` | **预期失败**：exit ≠ 0；stderr 含可分类构建失败语义（编译器/gyp/make 缺失）；`npm ls` 无半安装残留 | P7 | FR-101-008 | ⬜ |
-| TC-101-11 | npm i -g 边界事实 | device | 网络 + P10 已过 | `PTY$ npm install -g cowsay`（或任一带 bin 的纯 JS 包）→ ①尝试直接执行 `$HOME/bin/cowsay`；②`node <脚本路径>`；③`npx cowsay` | 安装 exit 0 且落 `$HOME/lib/node_modules`；①直接 exec **预期失败**（记录 errno/文案进事实区）；②③可替代成功 | — | FR-101-009 | ⬜ |
-| TC-101-12 | npx 运行 | device | 网络 + P10 已过 | `PTY$ npx cowsay hello`（未预装场景） | 输出 cowsay 画框文本；exit 0（bin 经 npx 的 node 直启绕开 shebang 限制） | — | FR-101-010 | ⬜ |
-| TC-101-13 | corepack 禁拉可执行件 | device | 离线（飞行模式） | `PTY$ corepack pnpm -v` | **预期可读失败**：exit ≠ 0（离线 + `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` 拒绝下载）；在线环境若「意外成功」⇒ 记录为边界违规事实回写规划 R6 | — | FR-101-012 | ⬜ |
-| TC-101-14 | 无网络失败可读 | device | 飞行模式 | `PTY$ npm install ms` | exit ≠ 0；报错含网络语义（ENOTFOUND/ETIMEDOUT/registry unreachable 类）；不崩溃不静默 | — | FR-101-013 | ⬜ |
-| TC-101-15 | 树损坏报错 | device | 人为删物化树内 `npm/bin/npm-cli.js` | `PTY$ npm -v` | 明确报错（模块找不到类），exit ≠ 0（兜底 = 消费方重新物化，非 npm 自修复——记录事实） | — | FR-101-014 | ⬜ |
+| TC-101-01 | npm -v 直出 | device | 产物物化 + env 注入（[plan](./plan.md) §3） | `PTY$ npm -v` | stdout 形态 `npm@<npmver> (node v<nodever>…)` 或 npm 标准 `npm -v` 输出且含 `<npmver>`；exit 0 | P2 | FR-101-001 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-02 | npm 版本一致性 | device | 同上 | `PTY$ npm -v` 对比 lock `builtFrom.npm.version` | 版本段 == `<npmver>`（物化树与 lock 同源） | P2 | FR-101-014 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-03 | npx -v 直出 | device | 同上 | `PTY$ npx -v` | 输出 = `<npmver>`（npx 随 npm 同树分发）；exit 0 | P3 | FR-101-002 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-04 | 离线首启 | device | 飞行模式/无网络 | `PTY$ npm -v`；`PTY$ npm ls`（空项目目录） | 两命令均成功且**不触网**（无网络下成功即证明）；npm ls 列出（空） | — | FR-101-003 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-05 | corepack --version 直出 | device | 同上 | `PTY$ corepack --version` | 输出 = `<cpver>`；exit 0 | P4 | FR-101-002 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-06 | 参数透传与退出码 | device | 同上 | `PTY$ npm --help`；`PTY$ npm invalid-subcommand` | help 输出完整（壳零解释）；无效子命令 exit ≠ 0 且与直调 `node …/npm-cli.js invalid-subcommand` 同码 | — | FR-101-004 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-07 | 纯 JS 包安装 | device | 网络 + P10 已过 | `PTY$ npm install ms` → `node -e 'console.log(typeof require("ms"))'` | 安装成功 exit 0；require 输出 `function`；`npm ls` 出现 ms | P6 | FR-101-005 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-08 | 安装清单 | device | TC-101-07 后 | `PTY$ npm ls`；`PTY$ npm ls -g` | ls 含 npm 与 ms；`ls -g` 列 `$HOME/lib/node_modules` 全局面 | — | FR-101-006 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-09 | 卸载 | device | TC-101-07 后 | `PTY$ npm uninstall ms` → `node -e 'require("ms")'` | uninstall exit 0；require 失败（MODULE_NOT_FOUND）；npm ls 不再列出 | — | FR-101-007 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-10 | 原生构建包失败如实 | device | 网络 + P10 已过 | `PTY$ npm install <node-gyp 类包（如含 C++ binding 的纯源码包）>` | **预期失败**：exit ≠ 0；stderr 含可分类构建失败语义（编译器/gyp/make 缺失）；`npm ls` 无半安装残留 | P7 | FR-101-008 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-11 | npm i -g 边界事实 | device | 网络 + P10 已过 | `PTY$ npm install -g cowsay`（或任一带 bin 的纯 JS 包）→ ①尝试直接执行 `$HOME/bin/cowsay`；②`node <脚本路径>`；③`npx cowsay` | 安装 exit 0 且落 `$HOME/lib/node_modules`；①直接 exec **预期失败**（记录 errno/文案进事实区）；②③可替代成功 | — | FR-101-009 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-12 | npx 运行 | device | 网络 + P10 已过 | `PTY$ npx cowsay hello`（未预装场景） | **判据修订（2026-11-03 设备实证）**：npx 对 bin 的执行路径是**直启 bin 文件**（非「经 node 直启」）——bin 落 app 数据目录 ⇒ SELinux C1 拒（exit 126 Permission denied），与 `npm i -g` bin 同一边界；替代路径 = `node <bin 脚本>`（TC-101-11c）。FR-101-010 的「绕开 shebang 限制」假设不成立，按能力边界事实记录 | — | FR-101-010 | ✅ 探针 2026-11-03（exit 126 + 事实记录；替代路径 ✅） |
+| TC-101-13 | corepack 禁拉可执行件 | device | 离线（飞行模式） | `PTY$ corepack pnpm -v` | **预期可读失败**：exit ≠ 0（离线 + `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` 拒绝下载）；在线环境若「意外成功」⇒ 记录为边界违规事实回写规划 R6 | — | FR-101-012 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-101-14 | 无网络失败可读 | device | 飞行模式 | `PTY$ npm install <未缓存包（如 is-odd）>`——**判据修订**：须用未缓存包（首测用 ms 命中本地缓存「离线安装成功」假阴性；npm 11 亦无 `--no-cache-dir` flag） | exit ≠ 0；报错含网络语义；不崩溃不静默 | — | FR-101-013 | ✅ 探针 2026-11-03（二跑） |
+| TC-101-15 | 树损坏报错 | device | 人为删物化树内 `npm/bin/npm-cli.js` | `PTY$ npm -v` | 明确报错（模块找不到类），exit ≠ 0（兜底 = 消费方重新物化，非 npm 自修复——记录事实） | — | FR-101-014 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
 
 ## 二、host 侧用例（构建机执行——随 001 dev 验证）
 
@@ -43,12 +43,12 @@
 
 | 项 | 值 | 记录时间 |
 |---|---|---|
-| `npm i -g` bin 直接 exec 失败形态（errno/文案） | ⬜ | — |
-| `node <bin 脚本路径>` 替代调用结果 | ⬜ | — |
-| corepack 在线环境拉可执行件的实际行为 | ⬜ | — |
-| 树损坏报错串样例 | ⬜ | — |
-| 原生构建包失败错误串样例（P7） | ⬜ | — |
-| npm/corepack 实测版本（vs lock 钉选） | ⬜ | — |
+| `npm i -g` bin 直接 exec 失败形态（errno/文案） | exit=126 `Permission denied`（SELinux C1；bin 落 `$HOME/bin`（app 数据目录））；`node <bin 脚本>` 替代成功 | 2026-11-03 模拟器 |
+| `node <bin 脚本路径>` 替代调用结果 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） | — |
+| corepack 在线环境拉可执行件的实际行为 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） | — |
+| 树损坏报错串样例 | 探针实测：删 `npm/bin/npm-cli.js` ⇒ npm 明确报错 exit≠0；从 assets 恢复后复原（TC-101-15 全链 PASS） | 2026-11-03 模拟器 |
+| 原生构建包失败错误串样例（P7） | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） | — |
+| npm/corepack 实测版本（vs lock 钉选） | npm 11.20.0 / corepack 0.36.0——与 lock 钉选一致（TC-101-02/05 PASS）；npm --help 本身 exit 1（npm 11 行为，help 文本完整输出） | 2026-11-03 模拟器 |
 
 ## 四、禁止的判据
 

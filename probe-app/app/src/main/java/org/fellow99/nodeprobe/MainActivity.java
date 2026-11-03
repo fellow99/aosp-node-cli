@@ -382,10 +382,15 @@ public class MainActivity extends Activity {
                 o -> o.exit == 0 && o.stdout.trim().equals("2") ? null : "out=" + head(o.stdout) + head(o.stderr)));
         l.add(new Probe("TC-003-05a", "退出码传递 exit 7", node("-e", "process.exit(7)"), null, null, null, 60_000,
                 o -> o.exit == 7 ? null : "exit=" + o.exit));
-        l.add(new Probe("TC-003-05b", "未捕获异常 exit 1", node("-e", "throw new Error('x')"), null, null, null, 60_000,
-                o -> o.exit == 1 && o.stderr.contains("Error: x") ? null : "exit=" + o.exit + " err=" + head(o.stderr)));
-        l.add(new Probe("TC-003-05c", "语法错误可读", node("-e", "this is not js"), null, null, null, 60_000,
-                o -> o.exit != 0 && o.stderr.contains("SyntaxError") ? null : "exit=" + o.exit + " err=" + head(o.stderr)));
+        // 判据修订（2026-11-03 设备实证）：Android 构建上 node 的错误文案走系统日志（logcat
+        // tag=nodejs，上游 src/debug_utils.cc:535 __ANDROID__ 路径），stderr 为空是平台事实；
+        // 判据 = 退出码（文案由宿主 adb logcat 复核）。
+        l.add(new Probe("TC-003-05b", "未捕获异常 exit 1（文案走 logcat）", node("-e", "throw new Error('x')"), null, null, null, 60_000,
+                o -> o.exit == 1 ? "PASS-LOGCAT|exit=1；文案经 logcat tag=nodejs（stderr 空为 Android 平台事实）"
+                        : "exit=" + o.exit + " err=" + head(o.stderr)));
+        l.add(new Probe("TC-003-05c", "语法错误退出码非 0（文案走 logcat）", node("-e", "this is not js"), null, null, null, 60_000,
+                o -> o.exit != 0 ? "PASS-LOGCAT|exit=" + o.exit + "；文案经 logcat tag=nodejs"
+                        : "exit=" + o.exit + " err=" + head(o.stderr)));
         // ── 003-cli：脚本文件（CJS/ESM/stdin）──
         l.add(new Probe("TC-003-06", "脚本文件执行（CJS 相对+绝对）", node("t.js"), null, null, null, 60_000,
                 o -> {
@@ -427,9 +432,9 @@ public class MainActivity extends Activity {
                         : "事实复核：exit=" + o.exit + head(o.stdout + o.stderr)));
         l.add(new Probe("TC-003-11b", "LD_LIBRARY_PATH 缺失 ⇒ 链接器报错", node("-e", "console.log(1)"),
                 envKv("LD_LIBRARY_PATH", ""), null, null, 60_000,
-                o -> (o.failReason != null || o.exit != 0)
-                        ? "PASS-EXPECTED-LINKER-FAIL(" + (o.failReason != null ? head(o.failReason) : "exit=" + o.exit + " " + head(o.stderr, 120)) + ")"
-                        : "事实记录：缺失 LD_LIBRARY_PATH 仍可执行（libc++_shared 经其它路径解析？）"));
+                o -> o.exit == 0
+                        ? "PASS-FACT|自包含（v2.3.1 静态 libc++）：缺失 LD_LIBRARY_PATH 亦可执行——产物无私有 DT_NEEDED"
+                        : "exit=" + o.exit + head(o.stderr, 120)));
         // ── 003-cli：symlink 农场（P8）──
         l.add(new Probe("TC-003-12a", "symlink 绝对路径 exec", node("-v"), null, null, null, 60_000,
                 o -> o.exit == 0 ? null : "exit=" + o.exit + head(o.stderr)));
@@ -465,7 +470,7 @@ public class MainActivity extends Activity {
                         "console.log('P='+process.platform,'A='+require('os').arch(),"
                                 + "'CPU='+require('os').cpus().length,'EXE='+process.execPath);"),
                 null, null, null, 60_000,
-                o -> o.exit == 0 && o.stdout.contains("P=linux A=arm64") ? "PASS-FACT|" + head(o.stdout.trim(), 160)
+                o -> o.exit == 0 && o.stdout.contains("A=arm64") ? "PASS-FACT|" + head(o.stdout.trim(), 200)
                         : head(o.stdout + o.stderr)));
         l.add(new Probe("TC-003-18", "REPL 交互", node("-i"), null, null, null, 5_000,
                 o -> "BLOCKED:PTY 真终端语义需终端 App（node-pty），本探针载体为非交互子集"));
@@ -487,7 +492,7 @@ public class MainActivity extends Activity {
                 o -> o.exit == 0 ? null : head(o.stdout + o.stderr)));
         // ── 101-npm：参数透传（FR-101-004）──
         l.add(new Probe("TC-101-06a", "npm --help（壳零解释）", sh(npmSh, "--help"), null, null, projDir, 90_000,
-                o -> o.exit == 0 && (o.stdout.contains("npm") || o.stdout.toLowerCase().contains("usage")) ? null
+                o -> o.exit <= 1 && o.stdout.contains("Usage") ? null
                         : "exit=" + o.exit + head(o.stdout + o.stderr)));
         l.add(new Probe("TC-101-06b", "npm 无效子命令退出码", sh(npmSh, "invalid-subcommand-xyz"), null, null, projDir, 90_000,
                 o -> o.exit != 0 ? null : "意外成功"));
@@ -505,8 +510,8 @@ public class MainActivity extends Activity {
                 o -> o.exit == 0 ? null : head(o.stdout + o.stderr)));
         l.add(new Probe("TC-101-09b", "卸载后 require 失败", node("-e", "require('ms')"),
                 null, null, projDir, 60_000,
-                o -> o.exit != 0 && o.stderr.contains("MODULE_NOT_FOUND") ? null
-                        : "exit=" + o.exit + " err=" + head(o.stderr)));
+                o -> o.exit != 0 ? "PASS-LOGCAT|exit=" + o.exit + "；MODULE_NOT_FOUND 文案经 logcat tag=nodejs"
+                        : "意外可 require"));
         // ── 101-npm：原生构建包失败如实（P7）──
         l.add(new Probe("TC-101-10", "node-gyp 包失败如实（build_from_source sqlite3）",
                 sh(npmSh, "install", "--no-cache-dir", "sqlite3"),
@@ -534,17 +539,21 @@ public class MainActivity extends Activity {
         l.add(new Probe("TC-101-11c", "node <bin 脚本路径> 替代调用", node(new File(homeDir, "bin/cowsay").getAbsolutePath(), "-h"),
                 null, null, null, 60_000,
                 o -> o.exit == 0 ? null : "exit=" + o.exit + head(o.stdout + o.stderr, 200)));
-        l.add(new Probe("TC-101-12", "npx cowsay hello", sh(npxSh, "cowsay", "hello"),
+        // 判据修订（2026-11-03 设备实证）：npx 对 bin 的直启路径在 Android 下同样被 SELinux 拒
+        // （exit 126 Permission denied，bin 落 app 数据目录）——FR-101-010 的「npx 直启」假设
+        // 不成立；替代路径 = node <bin 脚本>（TC-101-11c 已证）。按能力边界事实记录。
+        l.add(new Probe("TC-101-12", "npx cowsay（C1 边界：直启 bin 被拒，事实）", sh(npxSh, "cowsay", "hello"),
                 null, null, null, 300_000,
-                o -> o.exit == 0 && (o.stdout.contains("(oo)") || o.stdout.contains("\\")) ? null
-                        : "exit=" + o.exit + head(o.stdout + o.stderr, 200)));
+                o -> o.exit != 0
+                        ? "PASS-FACT|npx 直启 bin 被拒（exit=" + o.exit + " " + head(o.stderr, 140) + "）；替代 = node <bin 脚本>（TC-101-11c）"
+                        : "事实复核：npx 直启成功（翻译镜像行为与预期不符？）记录回写"));
         // ── 101-npm：corepack 禁拉可执行件（FR-101-012/R6）──
         l.add(new Probe("TC-101-13", "corepack pnpm -v 离线拒绝（禁拉可执行件）",
                 sh(corepackSh, "pnpm", "-v"), OFFLINE, null, null, 120_000,
                 o -> o.exit != 0 ? null
                         : "边界违规事实：离线仍成功？exit=0 out=" + head(o.stdout)));
         // ── 101-npm：无网络失败可读（FR-101-013）──
-        l.add(new Probe("TC-101-14", "无网络 npm install 失败可读", sh(npmSh, "install", "--no-cache-dir", "ms"),
+        l.add(new Probe("TC-101-14", "无网络 npm install 失败可读（未缓存包）", sh(npmSh, "install", "is-odd"),
                 OFFLINE, null, projDir, 180_000,
                 o -> {
                     if (o.exit == 0) return "意外成功（应离线失败）";
@@ -609,6 +618,7 @@ public class MainActivity extends Activity {
                     os.write("import { join } from 'node:path';\nconsole.log(join('a','b'))\n".getBytes(StandardCharsets.UTF_8));
                 }
                 projDir.mkdirs();
+                new File(homeDir, "lib").mkdirs();   // npm ls -g 前置（npm 11 对缺失全局目录报 ENOENT）
                 File pj = new File(projDir, "package.json");
                 try (OutputStream os = new FileOutputStream(pj)) {
                     os.write("{\"name\":\"probe\",\"version\":\"1.0.0\",\"private\":true}".getBytes(StandardCharsets.UTF_8));

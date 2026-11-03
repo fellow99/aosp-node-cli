@@ -57,7 +57,10 @@ node 解释器行为与 TLS（→ 003，P10 是本模块 P6 的前置）；pnpm 
   filesDir 不可直接 exec（C1/SELinux）②`#!/usr/bin/env node` 在 Android 无 `/usr/bin/env`
   ⇒ 经 `npx <包>` 或 `node <脚本路径>` 显式调用是**事实判据**（记录，不判失败）。
 - **FR-101-010（SHOULD）**：npx 运行——`npx <纯 JS CLI 包> --version` 型调用成功（bin 脚本
-  经 npx 的 node 直启路径，绕开 shebang 限制）。
+  经 npx 的 node 直启路径，绕开 shebang 限制）。**v2.3.1 as-built 修订（2026-11-03 设备
+  实证）**：npx 对 bin 的执行路径为**直启 bin 文件**——落 app 数据目录即被 SELinux C1 拒
+  （exit 126），「绕开 shebang 限制」假设不成立；能力边界 = 与 `npm i -g` bin 同限，
+  替代路径 `node <bin 脚本>` 可用（TC-101-11c 实证）。
 
 ### 3.3 配置与边界域
 
