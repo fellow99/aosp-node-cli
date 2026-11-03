@@ -20,8 +20,9 @@
 #   ② 版本一致性（--node == lock active.version，C5）
 #   ③ configure：android_configure（无 --shared）+ --with-intl=none + 16KB LDFLAGS
 #   ④ make -j → out/Release/node
-#   ⑤ 形态校验（provision --inspect：ET_DYN/PT_INTERP=linker64/16KB，不过 ⇒ exit 2）
-#   ⑥ llvm-strip --strip-unneeded → $OUT/libnode_cli.so
+#   ⑤ llvm-strip --strip-unneeded → $OUT/libnode_cli.so（先裁剪；v2.3.1 顺序修正）
+#   ⑥ exec 门禁校验（provision --inspect 于 strip 后产物 = lock 钉定的发布形态，
+#      全项硬判含 SHA/size vs lock——strip 前校验必与 lock 不一致，run 41676678760 实证）
 #   ⑦ npm/corepack 树收集 + 剪枝 + 入口存在性硬校验
 #   ⑧ manifest.json（逐文件 sha256 + 树摘要，经 provision --manifest-only 生成——摘要算法单源）
 #   ⑨ 三壳脚本生成（libnpm.so/libnpx.so/libcorepack.so，entry 出自 lock matrix.shellShims）
@@ -119,7 +120,7 @@ if [[ $DRY_RUN -eq 1 ]]; then
   log "     ※ 无 --shared（D2）；16KB=NDK r30 默认+门禁⑦验证（R2 as-built：configure 不读 LDFLAGS env）"
   [[ -n "$APPLY_PATCH" ]] && log "  ③patch python3 $PATCHER --source $SRC --ndk $NDK --patch $APPLY_PATCH"
   log "  ④ (cd $SRC && make -j${JOBS:-\$(nproc)})"
-  log "  ⑤ node $PROVISION --inspect $SRC/out/Release/node   # ET_DYN/PT_INTERP=linker64/16KB"
+  log "  ⑤ llvm-strip → $OUT/libnode_cli.so；⑥ provision --inspect（发布形态 vs lock 全项硬判）"
   log "  ⑥ <ndk-llvm-strip> --strip-unneeded → $OUT/libnode_cli.so"
   log "  ⑦ cp -r deps/npm + corepack 钉版树 → $TOOLS_DIR（剪枝 test/docs/man + node_modules/.bin + *.md；保留 node_modules）"
   log "  ⑧ node $PROVISION --manifest-only $OUT"
@@ -179,15 +180,17 @@ if [[ $COLLECT_ONLY -eq 0 ]]; then
   ( cd "$SRC" && make -j"$J" ) || die_gate ④ "make 失败"
   [[ -f "$SRC/out/Release/node" ]] || die_gate ④ "out/Release/node 未产出"
 
-  # ── ⑤ 形态校验（FR-001-014：不过 ⇒ 不 strip 不投放）─────────────────────
-  log "⑤ exec 门禁校验 out/Release/node"
-  node "$PROVISION" --inspect "$SRC/out/Release/node" \
-    || die_gate ⑤ "ET_DYN/PT_INTERP=linker64/16KB 校验未过（产物形态不是 exec 型 PIE）"
-
-  # ── ⑥ strip + 改名（FR-001-015）─────────────────────────────────────────
-  log "⑥ llvm-strip --strip-unneeded → $OUT/libnode_cli.so"
-  "$STRIP" --strip-unneeded "$SRC/out/Release/node" || die_gate ⑥ "strip 失败"
+  # ── ⑤ strip + 落位（FR-001-015；先裁剪——门禁在发布形态上执行，v2.3.1 顺序修正）──
+  log "⑤ llvm-strip --strip-unneeded → $OUT/libnode_cli.so"
+  "$STRIP" --strip-unneeded "$SRC/out/Release/node" || die_gate ⑤ "strip 失败"
   cp "$SRC/out/Release/node" "$OUT/libnode_cli.so"
+
+  # ── ⑥ exec 门禁校验（FR-001-014/032：于 strip 后产物 = lock 钉定的发布形态上
+  #    全项硬判——含 SHA/size 与 lock 一致；不过 ⇒ exit 2。run 41676678760 实证：
+  #    strip 前校验的 sha/size 必与 lock（钉 strip 后形态）不一致）──
+  log "⑥ exec 门禁校验（发布形态 vs lock）"
+  node "$PROVISION" --inspect "$OUT/libnode_cli.so" \
+    || die_gate ⑥ "发布形态门禁未过（ET_DYN/PT_INTERP/白名单/SHA/size/16KB 任一不符）"
 fi
 
 # ── ⑦ npm/corepack 树收集 + 剪枝 + 入口硬校验（FR-001-020，D5/D6）──────────
