@@ -32,3 +32,6 @@ build/out/
 
 # python bytecode
 __pycache__/
+
+# 探针测试报告留档（不入库）
+logs/
