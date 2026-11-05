@@ -3,8 +3,9 @@
  * scripts/fetch-node-cli-source.mjs —— 单源钉选获取（001-building FR-001-001…004）
  *
  * 源：node-v<ver>.tar.xz + 官方 SHASUMS256.txt（https://nodejs.org/dist/v<ver>/，树内含 deps/npm，
- * D6）；corepack 单独钉版 tarball（规划 v2.2：Node 25 起树内无 deps/corepack）。
- *
+ * D6）；corepack 单独钉版 tarball（规划 v2.2：Node 25 起树内无 deps/corepack）；
+ * ICU 第三源（20261105 修复设计 §4.1：full-icu 需完整 icu4c 数据源，configure 以 --with-icu-source
+ * 消费；钉选值 lock builtFrom.sources.icu——版本/url/sha256）。
  * 纪律（宪法 C1/C2/C6）：
  *   - 钉选值（version/url/sha256）唯一出自 node-cli.lock.json releases[].builtFrom.sourceTar，
  *     本脚本不持有任何版本事实；
@@ -24,9 +25,11 @@
  *   <out>/downloads/SHASUMS256.txt       官方校验文件原件
  *   <out>/node-src/                      解压后的完整源码树（顶层目录归一化）
  *   <out>/corepack/                      corepack 钉版 tarball 解包树（package/ 归一化；规划 v2.2）
+ *   <out>/icu-src/                       ICU 源码树（icu4c-sources.tgz 解包，顶层 icu/ 归一化；
+ *                                        configure --with-icu-source 消费；修复设计 §4.1 新增）
  *   <out>/FETCH-METADATA.json            出处记录
  *
- * 外部工具：tar -xJf（解压 .tar.xz；ubuntu runner 与 Git Bash 均预装 xz/tar）。
+ * 外部工具：tar -xJf / tar -xzf（解压 .tar.xz/.tgz；ubuntu runner 与 Git Bash 均预装 xz/tar）。
  *
  * 退出码：0 成功 · 2 sha256 校验失败（含缓存污染/官方链断裂）· 1 用法/IO/未钉选错误
  */
@@ -165,6 +168,25 @@ function extractTarGz(file, destDir) {
     throw new Error(`解压失败 ${path.basename(file)}：${e.message.split('\n')[0]}`);
   }
 }
+/** 解压 icu4c-sources.tgz：顶层目录归一化（icu/ → destDir；configure --with-icu-source 期望 destDir 下含 source/）。 */
+function extractIcuTgz(file, destDir) {
+  fs.rmSync(destDir, { recursive: true, force: true });
+  const tmp = `${destDir}.__extract__`;
+  fs.rmSync(tmp, { recursive: true, force: true });
+  fs.mkdirSync(tmp, { recursive: true });
+  const rel = path.relative(tmp, file).split(path.sep).join('/');
+  try {
+    execFileSync('tar', ['-xzf', rel, '-C', '.'], { cwd: tmp, stdio: 'pipe' });
+    const top = fs.readdirSync(tmp).find((e) => fs.statSync(path.join(tmp, e)).isDirectory());
+    if (!top) throw new Error('ICU tarball 顶层无目录');
+    fs.renameSync(path.join(tmp, top), destDir);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  } catch (e) {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(destDir, { recursive: true, force: true });
+    throw new Error(`解压失败 ${path.basename(file)}：${e.message.split('\n')[0]}`);
+  }
+}
 
 // ── 主流程 ──────────────────────────────────────────────────────────────────
 
@@ -206,6 +228,9 @@ const pinnedSha = sourceTar.sha256 && sourceTar.sha256.length === 64 ? sourceTar
 // corepack 第二源（规划 v2.2：Node 25+ 树内无 deps/corepack，改钉官方 registry tarball）
 const corepackTar = rel.builtFrom?.corepackTar ?? null;
 const cpPinnedSha = corepackTar?.sha256 && corepackTar.sha256.length === 64 ? corepackTar.sha256 : null;
+// ICU 第三源（20261105 修复设计 §4.1：full-icu 需完整 icu4c 数据源；lock builtFrom.sources.icu 钉版）
+const icu = rel.builtFrom?.sources?.icu ?? null;
+const icuPinnedSha = icu && icu.sha256 && icu.sha256.length === 64 ? icu.sha256 : null;
 
 if ((!pinnedSha || (corepackTar && !cpPinnedSha)) && !reportMode && !allowUnpinned) {
   die(
@@ -216,6 +241,9 @@ if ((!pinnedSha || (corepackTar && !cpPinnedSha)) && !reportMode && !allowUnpinn
 }
 if (corepackTar && !cpPinnedSha && !reportMode) {
   die(`lock builtFrom.corepackTar.sha256 未钉选——--allow-unpinned 不适用于 corepack（无官方 SHASUMS 链，必须钉选）。`);
+}
+if (icu && !icuPinnedSha && !reportMode) {
+  die(`lock builtFrom.sources.icu.sha256 未钉选——ICU 无官方 SHASUMS 链，必须钉选（先 --report-sha256 引导；维护者回写 lock 后重跑，--allow-unpinned 不适用）。`);
 }
 
 const downloads = path.join(outDir, 'downloads');
@@ -279,12 +307,31 @@ if (corepackTar) {
   say(`✔ corepack-${corepackTar.version}.tgz == lock 钉选值（${cpActualSha.slice(0, 16)}…，${fs.statSync(cpFile).size} 字节）`);
 }
 
+// ICU（下载 + sha256 校验；无可替代官方校验链 ⇒ 必须钉选）
+let icuActualSha = null;
+let icuFile = null;
+if (icu) {
+  icuFile = path.join(downloads, `icu4c-${icu.version}-sources.tgz`);
+  await fetchFile(icu.url, icuFile);
+  icuActualSha = sha256File(icuFile);
+  if (icuActualSha !== icuPinnedSha) {
+    die(
+      `SHA-256 校验失败（icu4c sources）：${path.basename(icuFile)}\n  实际 ${icuActualSha}\n  锁定 ${icuPinnedSha}`,
+      2,
+    );
+  }
+  say(`✔ icu4c-${icu.version}-sources.tgz == lock 钉选值（${icuActualSha.slice(0, 16)}…，${fs.statSync(icuFile).size} 字节）`);
+}
+
 if (reportMode) {
   say(`钉选引导模式（--report-sha256）：以下哈希来自官方文件实测下载链；`);
   say(`请维护者核对后回写 ${LOCK_FILE} builtFrom（本脚本不写 lock）。`);
   say(`pin> sourceTar: version=${nodeVer} url=${tarUrl} sha256=${officialSha}`);
   if (corepackTar && cpActualSha) {
     say(`pin> corepackTar: version=${corepackTar.version} url=${corepackTar.url} sha256=${cpActualSha}`);
+  }
+  if (icu && icuActualSha) {
+    say(`pin> icu: version=${icu.version} url=${icu.url} sha256=${icuActualSha}`);
   }
   process.exit(0);
 }
@@ -313,6 +360,15 @@ if (corepackTar && cpFile) {
   }
   say(`✔ corepack ${corepackTar.version} 在位（entry corepack/dist/corepack.js）`);
 }
+if (icu && icuFile) {
+  const icuDest = path.join(outDir, 'icu-src');
+  say(`解压 icu4c-${icu.version}-sources.tgz → ${icuDest}（顶层 icu/ 归一化）`);
+  extractIcuTgz(icuFile, icuDest);
+  if (!fs.existsSync(path.join(icuDest, 'source', 'common', 'unicode', 'uvernum.h'))) {
+    die(`icu-src 缺 source/common/unicode/uvernum.h（tarball 布局异常）：${icuDest}`);
+  }
+  say(`✔ ICU 源码树在位（source/ 含 uvernum.h，version=${icu.version}；configure --with-icu-source 消费）`);
+}
 
 // FETCH-METADATA.json（出处记录，C1：无补丁步骤的事实凭证）
 const meta = {
@@ -333,6 +389,13 @@ const meta = {
     sha256: cpActualSha,
     size: fs.statSync(cpFile).size,
     pinnedFrom: 'node-cli.lock.json (file == lock)',
+  } } : {}),
+  ...(icu && icuActualSha ? { icu: {
+    version: icu.version,
+    url: icu.url,
+    sha256: icuActualSha,
+    size: fs.statSync(icuFile).size,
+    pinnedFrom: 'node-cli.lock.json (file == lock builtFrom.sources.icu)',
   } } : {}),
 };
 const metaPath = path.join(outDir, 'FETCH-METADATA.json');

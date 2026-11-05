@@ -25,7 +25,7 @@
 | TC-003-12 | symlink 农场 exec | device | `$HOME/bin/node → <nativeLibraryDir>/libnode_cli.so`；PATH 含 `$HOME/bin` | `PTY$ node -v`（以命令名经 PATH 解析） | 输出 `v<nodever>`（SELinux 只查目标标签——symlink exec 成功即证据） | P8 | FR-003-011 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
 | TC-003-13 | JIT 计时与 `--jitless` | device | 同上（Android 15 真机优先） | ①`node -e '<hotLoop 计时脚本>'`（1e7 次加法，`console.time`）；②同脚本加 `--jitless` | ①计时值回填事实区（不断言阈值）；②`--jitless` 可运行出相同结果 | P9 | FR-003-012 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
 | TC-003-14 | TLS/内嵌 CA | device | 同上 + 网络 | `node -e 'https.get("https://registry.npmjs.org",r=>console.log(r.statusCode)).on("error",e=>{console.error(e.message);process.exit(1)})'` | 状态码（3xx/200）回程；exit 0（握手成功 = 内嵌 CA store 生效） | P10 | FR-003-009 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
-| TC-003-15 | Intl 边界事实 | device | 同上 | `node -e 'console.log(typeof Intl)'`（及 `new Intl.NumberFormat` 尝试） | **只记录实际行为**（intl=none 预期：`undefined` 或抛错——以实测为准）；不断言形态；回填事实区与规划 §7 | — | FR-003-013 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
+| TC-003-15 | Intl 边界事实 | device | 同上 | `node -e 'console.log(typeof Intl)'`（及 `new Intl.NumberFormat` 尝试） | **只记录实际行为**（v26.13.0 intl=none 首产：`undefined`）——**2026-11-05 判据口径修订**：修复设计 §4.1 将 intl 改 full-icu，重 cut 后 `typeof Intl` 应为 `object`、`/\p{ID_Start}/u` 可用；本用例仍只记录不断言（禁止判据 4），回填事实区与规划 §7/D7 | — | FR-003-013 | ✅ 探针 2026-11-04（undefined，intl=none AAR；翻译模拟器环境，G3 正式验收需原生 arm64 复测） |
 | TC-003-16 | Temporal 边界事实 | device | 同上 | `node -e 'console.log(typeof Temporal)'` | **只记录实际行为**（若拍板禁用：预期 `undefined`）；回填事实区 | — | FR-003-013 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
 | TC-003-17 | 平台事实记录 | device | 同上 | `node -e 'console.log(process.platform, os.arch(), os.cpus().length, process.execPath)'` | 只记录不断言。**实测（2026-11-03）：platform=`android`（规划预期 linux 系错误，已按 C7 修正）、arch=arm64、cpus().length=0、execPath=nativeLibraryDir/libnode_cli.so** | — | FR-003-014 | ✅ 探针 2026-11-03 |
 | TC-003-18 | REPL 交互 | device | 标准 PTY 终端 | 无参启动 → 输入 `1+1` → 输入 `.exit` | 见 `>` 提示符（node REPL 形态）、回显 `2`、干净退出 | — | FR-003-007 | ✅ 探针 2026-11-04（翻译模拟器环境；G3 正式验收需原生 arm64 复测） |
@@ -44,7 +44,7 @@
 |---|---|---|
 | P9 hotLoop 计时（JIT） | PASS（exit 0，SUM 正确；耗时值见 probe-report.json——翻译镜像计时仅参考） | 2026-11-03 模拟器 |
 | P9 `--jitless` 同脚本计时 | PASS（兜底可运行，结果同 JIT） | 2026-11-03 模拟器 |
-| `typeof Intl` 实际行为 | undefined（intl=none 生效；形态=undefined 非抛错） | 2026-11-03 模拟器 |
+| `typeof Intl` 实际行为 | undefined（v26.13.0 intl=none 首产 AAR；形态=undefined 非抛错）——**2026-11-05 起 full-icu 口径**（修复设计 §4.1），重 cut 后待复测 | 2026-11-03 模拟器（2026-11-05 补注） |
 | `typeof Temporal` 实际行为 | undefined（temporal 禁用生效） | 2026-11-03 模拟器 |
 | process.platform / os.arch() | **platform=`android`（非 linux——规划预期修正，实测 2026-11-03）** / arch=`arm64`；os.cpus().length=**0**（Android 语义）；process.execPath=<nativeLibraryDir>/libnode_cli.so | 2026-11-03 模拟器 |
 | process.execPath 实际值 | <nativeLibraryDir>/libnode_cli.so（改名后的真实落点） | 2026-11-03 模拟器 |

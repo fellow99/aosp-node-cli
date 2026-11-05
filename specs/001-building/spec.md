@@ -15,8 +15,8 @@ assets/清单/壳脚本白名单。
 
 ## 2. 范围
 
-**在范围内（001）：** fetch 单源（node tar.xz + SHASUMS256.txt 官方校验链）钉选+校验+解压；
-NDK r30 工具链解析；configure（无 `--shared` + `--with-intl=none` + 16KB LDFLAGS）；make；
+**在范围内（001）：** fetch 多源（node tar.xz + SHASUMS256.txt 官方校验链 + **ICU 数据源**——钉版本+sha256 校验后以 `--with-icu-source` 喂 configure，2026-11-05 修复设计 §4.1）钉选+校验+解压；
+NDK r30 工具链解析；configure（无 `--shared` + `--with-intl=full-icu` + 16KB LDFLAGS）；make；
 产物 ELF 形态校验；strip 改名；npm/corepack 树收集与剪枝；manifest 生成；三壳脚本生成；
 构建元数据；provision 工具扩展（`--assets`/`--shims` 投放、manifest 生成与校验、assets
 静态性检查、jniLibs 兄弟文件白名单二分类、壳脚本五判据）。
@@ -46,12 +46,13 @@ C1/D8 禁止——补丁若需，后置在构建脚本内且逐条记录）。
 
 ### 3.2 交叉编译域（M1-T2~T3）
 
-- **FR-001-010（MUST）**：configure 纪律——**不带 `--shared`**（D2），追加 `--with-intl=none`
-  （D7）+ `--v8-disable-temporal-support`（与 runtime 引擎同口径；CI 首跑实测：不禁用则 Rust
-  crates 产 host 对象挂 aarch64 链接），固化继承 `--openssl-no-asm --cross-compiling`；实现方式
-  （R2 as-built）：android_configure.py 不透传额外参数 ⇒ 构建脚本等价复刻其环境后直呼
-  `./configure` 注入；16KB 页对齐经 NDK r28+ 默认达成并由门禁⑦验证（configure 不读 LDFLAGS
-  env——显式注入不可达，如实登记）。
+- **FR-001-010（MUST）**：configure 纪律——**不带 `--shared`**（D2），追加 `--with-intl=full-icu`
+  （D7 已由 2026-11-05 修复设计 §4.1 从 `intl=none` 改为 `full-icu`；ICU 数据源经 fetch-icu 步骤
+  钉版本+sha256 校验后以 `--with-icu-source` 喂 configure，无 `NODE_ICU_DATA` 依赖）+ `--v8-disable-temporal-support`
+  （与 runtime 引擎同口径；CI 首跑实测：不禁用则 Rust crates 产 host 对象挂 aarch64 链接），固化继承
+  `--openssl-no-asm --cross-compiling`；实现方式（R2 as-built）：android_configure.py 不透传额外参数 ⇒
+  构建脚本等价复刻其环境后直呼 `./configure` 注入；16KB 页对齐经 NDK r28+ 默认达成并由门禁⑦验证
+  （configure 不读 LDFLAGS env——显式注入不可达，如实登记）。
 - **FR-001-011（MUST）**：NDK 工具链钉版——NDK 路径不存在 / toolchain 前缀解析失败 ⇒ 显式
   失败；NDK 版本回写 lock `builtFrom.ndk`（r30 线 ⬜ 首个 CI 实建钉版）。
 - **FR-001-012（MUST）**：host 工具链前置——CC_host/CXX_host（gcc/g++）显式导出供

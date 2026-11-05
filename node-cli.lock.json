@@ -1,5 +1,5 @@
 {
-  "$comment": "node-cli single source of truth: version = paired Node version (mirrors aosp-node-runtime). Binaries are NOT committed; CI builds libnode_cli.so and tools/provision.mjs deploys it. RE-CUT v2.3.1 (static libc++, 2026-11-03): re-opened DRAFT pending the re-cut CI build. The current entry is a DRAFT placeholder: size/sha256 are pinned by the first real CI build and written back here. See docs/000-工程规划.md.",
+  "$comment": "node-cli single source of truth: version = paired Node version (mirrors aosp-node-runtime). Binaries are NOT committed; CI builds libnode_cli.so and tools/provision.mjs deploys it. RE-CUT v2.3.1 (static libc++, 2026-11-03): re-opened DRAFT pending the re-cut CI build. 2026-11-05: intl switches none -> full-icu (fix design docs/20261105-cli-实测问题-修复设计.md §4.1) with --with-icu-source fed from sources.icu; DRAFT placeholder still applies: size/sha256/icu-sha are re-pinned by the first full-icu CI build and written back here. See docs/000-工程规划.md.",
   "active": {
     "version": "26.13.0",
     "abi": "arm64-v8a"
@@ -23,7 +23,7 @@
           "sha256": "263f639ecfa7a17b49438d76cdbf9aff73179e3c7cb789da69b900718427fa2e"
         },
         "ndk": "30.0.16248370 (NDK r30; CI run 41471561286 / tag v26.13.0)",
-        "flags": "direct ./configure (replicates android_configure env) WITHOUT --shared (D2): --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none --v8-disable-temporal-support; CXX += -static-libstdc++ (v2.3.1: self-contained, no libc++_shared needed); 16KB = NDK r28+ default verified by gate 7; llvm-strip --strip-unneeded",
+        "flags": "direct ./configure (replicates android_configure env) WITHOUT --shared (D2): --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=full-icu --with-icu-source=<.dist/src/icu-src> --v8-disable-temporal-support; CXX += -static-libstdc++ (v2.3.1: self-contained, no libc++_shared needed); 16KB = NDK r28+ default verified by gate 7; llvm-strip --strip-unneeded",
         "patch": "trap-handler,cpu-features (CI run 41471561286; cc-host via env injection; temporal disabled via configure flag)",
         "npm": {
           "version": "11.20.0",
@@ -66,6 +66,14 @@
           "version": "0.36.0",
           "url": "https://registry.npmjs.org/corepack/-/corepack-0.36.0.tgz",
           "sha256": "9128cfe26aee0c99f4fc68c15c6b8b12309a68be0de2c012cdfea2a463cb722f"
+        },
+        "sources": {
+          "$comment": "ICU data source for --with-intl=full-icu (20261105 fix design §4.1): icu4c release pinned version+url; sha256 is the pin published by the node source tree itself at tools/icu/current_ver.dep for v26.13.0 (this repo .dist/src/node-src), verified again by the first CI full-icu re-cut and written back here if it differs. Not the ICU binary size/sha (those stay gated by CI re-cut, header is DRAFT semantics).",
+          "icu": {
+            "version": "78.3",
+            "url": "https://github.com/unicode-org/icu/releases/download/release-78.3/icu4c-78.3-sources.tgz",
+            "sha256": "3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0"
+          }
         }
       },
       "gates": {

@@ -5,9 +5,16 @@
 # 与 aosp-node-runtime 的 build-node-android.sh 同一棵源码树、同一条 android_configure 链路，
 # 关键差异（docs/000-工程规划.md §3.1/§4）：
 #   1) 配置【不带 --shared】（D2）：默认 make 目标产出 node 可执行（而非 libnode.so 共享库）；
-#   2) --with-intl=none + --v8-disable-temporal-support（D7：与 runtime 引擎同口径——runner 有
+#
+#   2) --with-intl=full-icu + --with-icu-source=<钉版 icu4c 数据源> + --v8-disable-temporal-support：
+#      intl 从 none 改 full-icu（20261105 实测修复设计 §4.1，物理修复 \p{...} 属性转义与 Intl 全
+#      locale）。注意：这不是「与 runtime 同口径」——runtime 引擎为 small-icu，CLI 交付面为全量
+#      Intl（两者都带 ICU，交付面不同；原「体积口径与 runtime 一致」注释系事实性错误，已更正，
+#      见 STRUCTURE.md §6-5 与规划 D7）；temporal 禁用原因：runner 有
 #      cargo 时 temporal 默认开启，Rust crates 无 android cross target 会产 host 对象挂链接，
 #      CI 首跑实测确认：libnode_crates.a incompatible with aarch64linux）；
+#      ICU 数据源经 fetch-node-cli-source.mjs 钉版+sha256 校验产出（→ <src 同级>/icu-src），
+#      本脚本只做「必须存在」前置校验并喂给 configure；版本/url/sha256 记录 lock builtFrom.sources.icu。
 #   3) 16KB 页对齐 = NDK r28+ 默认 + 门禁⑦验证（as-built R2：configure.py 不读 LDFLAGS
 #      env，显式注入不可达——runtime 同款口径）；
 #   4) 产物是 exec 型 ELF：PIE + PT_INTERP=/system/bin/linker64（与 dlopen 库门禁相反）；
@@ -17,8 +24,9 @@
 #
 # 十步（规划 §4.2 ①–⑩；FR-001-010…023）：
 #   ① env：NDK toolchain 解析 + CC_host/CXX_host（等价 runtime cc-host 补丁，env 注入免改源）+ 主机工具前置检查
-#   ② 版本一致性（--node == lock active.version，C5）
-#   ③ configure：android_configure（无 --shared）+ --with-intl=none + 16KB LDFLAGS
+#   ② 版本一致性（--node == lock active.version，C5）+ fetch-icu 前置校验（icu-src 与 lock
+#      builtFrom.sources.icu 对应；钉版本+sha256 的下载/校验由 fetch-node-cli-source.mjs 完成）
+#   ③ configure：android_configure（无 --shared）+ --with-intl=full-icu --with-icu-source=<icu-src> + 16KB LDFLAGS
 #   ④ make -j → out/Release/node
 #   ⑤ llvm-strip --strip-unneeded → $OUT/libnode_cli.so（先裁剪；v2.3.1 顺序修正）
 #   ⑥ exec 门禁校验（provision --inspect 于 strip 后产物 = lock 钉定的发布形态，
@@ -64,11 +72,13 @@ usage() {
   --dry-run       打印计划不执行
   --collect-only  只跑 ⑦⑧⑨⑩（树收集/manifest/壳/元数据；无需 NDK）
   --corepack-src  corepack 钉版解包树（默认 <src 同级>/corepack；fetch 产出；规划 v2.2）
+  --icu-src       ICU 源码树（默认 <src 同级>/icu-src；fetch-node-cli-source.mjs 钉版产出；
+                  lock builtFrom.sources.icu；full-icu 必需，缺失 ⇒ exit 1）
 EOF
 }
 
 NODE=""; API="24"; SRC=""; NDK=""; OUT=""; JOBS=""
-APPLY_PATCH=""; DRY_RUN=0; COLLECT_ONLY=0; SKIP_SHIMS=0
+APPLY_PATCH=""; ICU_SRC=""; DRY_RUN=0; COLLECT_ONLY=0; SKIP_SHIMS=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --node) NODE="$2"; shift 2;;
@@ -82,6 +92,7 @@ while [[ $# -gt 0 ]]; do
     --dry-run)      DRY_RUN=1; shift;;
     --collect-only) COLLECT_ONLY=1; shift;;
     --corepack-src) COREPACK_SRC="$2"; shift 2;;
+    --icu-src)      ICU_SRC="$2"; shift 2;;
     -h|--help) usage; exit 0;;
     *) echo "未知参数: $1" >&2; usage; exit 1;;
   esac
@@ -95,6 +106,7 @@ if [[ -d "$SRC" ]]; then
 elif [[ $DRY_RUN -ne 1 ]]; then
   echo "[build] 环境错误（步②）：源码树不存在：$SRC（先跑 fetch）" >&2; exit 1
 fi
+ICU_SRC="${ICU_SRC:-$(dirname "$SRC")/icu-src}"
 COREPACK_SRC="${COREPACK_SRC:-$(dirname "$SRC")/corepack}"
 mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 TOOLS_DIR="$OUT/node-bridge-tools"
@@ -115,8 +127,9 @@ fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
   log "DRY-RUN：以下为将执行的命令（不执行）"
+  log "  ② fetch-icu 前置校验：$ICU_SRC/source 在位（full-icu 必需；钉版本+sha256 由 fetch-node-cli-source.mjs 完成，lock builtFrom.sources.icu）"
   log "  ③ (cd $SRC && PATH/GYP_DEFINES/CC/CXX/CC_host 等价复刻 android_configure.py 后直呼:)"
-  log "     ./configure …（同上 + --v8-disable-temporal-support）"
+  log "     ./configure --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=full-icu --with-icu-source=$ICU_SRC --v8-disable-temporal-support"
   log "     ※ 无 --shared（D2）；16KB=NDK r30 默认+门禁⑦验证（R2 as-built：configure 不读 LDFLAGS env）"
   [[ -n "$APPLY_PATCH" ]] && log "  ③patch python3 $PATCHER --source $SRC --ndk $NDK --patch $APPLY_PATCH"
   log "  ④ (cd $SRC && make -j${JOBS:-\$(nproc)})"
@@ -157,21 +170,27 @@ if [[ $COLLECT_ONLY -eq 0 ]]; then
       || die_gate ③ "补丁应用失败（marker 不匹配？核对源码树版本）"
   fi
 
-  # ── ③ configure（无 --shared，D2；intl=none + temporal 禁用，D7）──────────
+  # ── ③ configure（无 --shared，D2；--with-intl=full-icu + --with-icu-source，D7 修订 + temporal 禁用）──
   # as-built（R2 结论，实测 v26.13.0 树 + CI 首跑）：android_configure.py 恰收 3 参（多参即 Usage
   # 退出）且无 exec 位 ⇒ 等价复刻 wrapper 的 PATH/CC/CXX/GYP_DEFINES 后【直呼 ./configure】注入
   # 我们的参数；configure.py 不读 LDFLAGS env ⇒ 16KB 靠 NDK r28+ 默认 + 门禁⑦验证；CC_host/CXX_host
-  # 由步① env 导出。--v8-disable-temporal-support 是【真实选项】（configure.py:1277/2267 →
+  # 由步① env 导出。--with-intl=full-icu + --with-icu-source=$ICU_SRC（20261105 修复设计 §4.1：
+  # intl 从 none 改 full-icu，物理修复 \p{...} 属性转义与 Intl 全 locale；ICU 数据源钉版+sha256
+  # 由 fetch-node-cli-source.mjs 校验，lock builtFrom.sources.icu——configure 不再自行从网下载）。
+  # --v8-disable-temporal-support 是【真实选项】（configure.py:1277/2267 →
   # v8_enable_temporal_support=0，node_crates 不进链接）：runner 自带 cargo≥1.86 时 temporal
   # 默认开启且 cargo 无 android target ⇒ host x86_64 对象挂 aarch64 链接（CI run 41449442265
   # 实测），故必须显式禁用（与 runtime 引擎同口径，规划 §7 已知限制 5）。
   [[ -f "$SRC/configure" ]] || die_env ③ "源码树缺 ./configure"
-  log "③ ./configure --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none --v8-disable-temporal-support（无 --shared，D2）"
+  # ③ fetch-icu 前置（强制性；full-icu 需要完整 icu4c 数据源，钉版+sha256 校验在 fetch 完成）：
+  [[ -d "$ICU_SRC/source" ]] || die_env ③ "ICU 源码树缺失：$ICU_SRC/source（先跑 fetch-node-cli-source.mjs；lock builtFrom.sources.icu 钉版 icu4c——full-icu 必需，勿回退 intl=none）"
+  log "③ fetch-icu 前置 ✓ icu-src=$ICU_SRC（full-icu 数据源在位）"
+  log "③ ./configure --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=full-icu --with-icu-source=$ICU_SRC --v8-disable-temporal-support（无 --shared，D2）"
   ( cd "$SRC" &&
     export PATH="$TOOLCHAIN_BIN:$PATH" \
            CC="$CC" CXX="$CXX" CC_host="$CC_host" CXX_host="$CXX_host" \
            GYP_DEFINES="target_arch=arm64 v8_target_arch=arm64 android_target_arch=arm64 host_os=linux OS=android android_ndk_path=$NDK" &&
-    ./configure --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none --v8-disable-temporal-support ) \
+    ./configure --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=full-icu --with-icu-source="$ICU_SRC" --v8-disable-temporal-support ) \
     || die_gate ③ "configure 失败（记录报错清单后按需 --apply-patch，禁止盲目补丁）"
 
   # ── ④ make ───────────────────────────────────────────────────────────────
@@ -264,13 +283,14 @@ const meta = {
   tool: "build-node-cli-android.sh",
   node: rel.version, abi: rel.abi, androidApi: rel.androidApi,
   ndk: process.argv[6],
-  configure: "direct ./configure (replicates android_configure env) WITHOUT --shared (D2): --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=none --v8-disable-temporal-support; CC_host/CXX_host via env; 16KB = NDK r28+ default verified by gate 7",
+  configure: "direct ./configure (replicates android_configure env) WITHOUT --shared (D2): --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=full-icu --with-icu-source=" + process.argv[7] + " --v8-disable-temporal-support; CC_host/CXX_host via env; 16KB = NDK r28+ default verified by gate 7",
   patch: process.argv[3] === "" ? "none" : process.argv[3],
   pruned: { npm: Number(process.argv[4]), corepack: Number(process.argv[5]) },
+  icu: process.argv[7],
   builtAtUTC: new Date().toISOString(),
 };
 fs.writeFileSync(process.argv[2], "BUILD-METADATA\n" + JSON.stringify(meta, null, 2) + "\n");
-' "$LOCK" "$OUT/BUILD-METADATA.txt" "$APPLY_PATCH" "$PRUNED_NPM" "$PRUNED_CP" "$NDK_REV"
+' "$LOCK" "$OUT/BUILD-METADATA.txt" "$APPLY_PATCH" "$PRUNED_NPM" "$PRUNED_CP" "$NDK_REV" "$ICU_SRC"
 if [[ -f "$ROOT/.dist/src/FETCH-METADATA.json" ]]; then
   cp "$ROOT/.dist/src/FETCH-METADATA.json" "$OUT/FETCH-METADATA.json"
   log "⑩ ✔ FETCH-METADATA.json 归档"

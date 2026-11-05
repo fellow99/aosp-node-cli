@@ -21,7 +21,7 @@
 - [x] T3.1 参数面扩展（--jobs/--dry-run/--apply-patch/--skip-shims）
 - [x] T3.2 步① env：NDK toolchain 前缀解析 + CC_host/CXX_host 导出 + 主机工具前置检查 — FR-001-011/012
 - [x] T3.3 步② 版本一致性（= lock active.version）— C5
-- [x] T3.4 步③ configure 命令组装（无 --shared + --with-intl=none + 16KB LDFLAGS）— FR-001-010
+- [x] T3.4 步③ configure 命令组装（无 --shared + --with-intl=full-icu（2026-11-05 修复设计 §4.1，ICU 数据源经 fetch-icu 步骤以 --with-icu-source 喂入）+ 16KB LDFLAGS）— FR-001-010
 - [x] T3.5 步④⑤ make + 形态校验（provision --inspect 门禁化，不过 ⇒ exit 2）— FR-001-014
 - [x] T3.6 步⑥ strip（llvm-strip --strip-unneeded → libnode_cli.so）— FR-001-015
 - [x] T3.7 步⑦ npm/corepack 树收集 + 剪枝 + 入口存在性硬校验 — FR-001-020

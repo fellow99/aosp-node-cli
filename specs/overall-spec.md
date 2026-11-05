@@ -53,7 +53,7 @@
 | 域 | 内容 |
 |---|---|
 | 构建系统与版本纪律 | AAR 容器工程、版本恒等于配对 Node 版本、三制品同版上线纪律（规划 §2） |
-| 交叉编译（M1 ⬜） | 官方源码获取（不改源）、Android 配置（无 `--shared`、`--with-intl=none`）、16KB 页、strip 与唯一命名 |
+| 交叉编译（M1 ⬜） | 官方源码获取（不改源）、Android 配置（无 `--shared`、`--with-intl=full-icu`（**2026-11-05 修复设计 §4.1**，ICU 数据源经 fetch-icu 钉版本+sha256 校验后以 `--with-icu-source` 喂入））、16KB 页、strip 与唯一命名 |
 | 门禁与投放 | exec 型 ELF 门禁七项、依赖白名单、命名禁区、幂等投放、版本元数据 |
 | 随包树（M1 ⬜） | npm/corepack JS 树收集/剪枝/manifest（逐文件 sha256）、壳脚本打入与白名单校验（规划 §5/§6） |
 | 发布 | GitHub Release 先行 + Maven Central 随后（两段式，规划 §10.1）；许可清单随 Release 归档 |
@@ -71,7 +71,7 @@
 | B2 | **npm 原生包不可装** ⇒ `npm i` 只承诺**纯 JS 包**可用（如装后可 `require`） | 正例验收见探针 P6 ⬜ M2 |
 | B3 | `npm i -g` 装出的 bin 脚本落在应用可写目录（不可 exec），且其 `#!/usr/bin/env node` 在 Android 上不可寻 ⇒ 只能经 `npx` 或 `node <脚本路径>` 显式调用 | 能力边界（规划 §7.1） |
 | B4 | corepack **禁止**用于获取 pnpm/yarn 可执行件（运行期下载可执行件被纪律禁止）；corepack 仅 `--version` 与钉版 JS 兜底 | 纪律边界（R6） |
-| B5 | Intl API 不可用（`--with-intl=none` 为**有意取舍**，与 runtime 引擎的 small-icu 分歧已登记）；Temporal API ⬜（若 M1 拍板禁用则与 runtime 同口径） | 有意分歧（D7/R10），消费方文档必须写明 |
+| B5 | Intl full-icu（**2026-11-05 修复设计 §4.1** 由 `intl=none` 改为 `full-icu`：`\p{...}` 属性转义与全 locale 可用、无 `NODE_ICU_DATA` 依赖；原 D7「intl=none 有意分歧」口径作废）；Temporal API ⬜（若 M1 拍板禁用则与 runtime 同口径） | 口径修订（D7/R10），消费方文档与 001/003 规格同步 |
 
 ---
 
