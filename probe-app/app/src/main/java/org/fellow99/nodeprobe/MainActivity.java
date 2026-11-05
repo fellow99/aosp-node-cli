@@ -26,7 +26,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * node-cli 探针载体（M2-T1 / specs 003-cli + 101-npm-integration tasks T4.1）。
+ * node-cli 探针载体（M2-T1 / specs 003-cli + 101-npm-integration + 101-probe-app）。
  *
  * 职责（镜像 docs/000-工程规划.md §3 消费方环境引导层 + §7 环境变量契约）：
  *  1) 物化：assets/node-bridge-tools/** → filesDir/node-bridge-tools（marker 幂等：manifest.json
@@ -36,10 +36,17 @@ import org.json.JSONObject;
  *     NODE_NATIVE_DIR + npm_config_prefix/cache/update_notifier + COREPACK_ENABLE_DOWNLOAD_PROMPT；
  *  3) 执行：ProcessBuilder exec nativeLibraryDir/libnode_cli.so 与三壳（非 PTY 子集；
  *     REPL/PTY 语义归终端 App，TC-003-18 按 BLOCKED 登记）；
- *  4) 判据：TC-003-01…18 与 TC-101-01…15 的可执行子集，逐条 PASS/FAIL/BLOCKED + JSON 报告。
+ *  4) 判据：TC-003-01…18、TC-101-01…15、TC-MAT-01 与 TC-INTL-01…03 的可执行子集，
+ *     逐条 PASS/FAIL/BLOCKED + JSON 报告（FR-101-PROBE-004/008…011）。
  *
- * 用例正典：specs/003-cli/test-cases.md · specs/101-npm-integration/test-cases.md（期望值引用
- * lock：node 26.13.0 / npm 11.20.0 / corepack 0.36.0）。
+ * TC-INTL-* 判据出处：docs/20261105-cli-实测问题-修复设计.md
+ *   §4.1 ① 属性转义（full-icu 判据）、② Intl 全 locale、§2.1 B1 错误 hook（error-hook.js：
+ *   NODE_OPTIONS=--require=<hook> → uncaughtException/unhandledRejection → stderr stack + exit 1）。
+ *   当前 app/libs/node-cli-release.aar 为 intl=none 首产制品：TC-INTL-01/02 预期 FAIL
+ *   （判据如实标注「待 full-icu CI 重cut 后 PASS」），TC-INTL-03 当前即可 PASS。
+ *
+ * 用例正典：specs/003-cli/test-cases.md · specs/101-npm-integration/test-cases.md ·
+ * specs/101-probe-app/test-cases.md（期望值引用 lock：node 26.13.0 / npm 11.20.0 / corepack 0.36.0）。
  */
 public class MainActivity extends Activity {
 
@@ -92,6 +99,12 @@ public class MainActivity extends Activity {
         setContentView(root);
         log("probe-app ready\nnativeDir=" + nativeDir + "\ntoolsDir=" + toolsDir
                 + "\n点击 RUN ALL PROBES 执行（首次会物化 assets npm/corepack 树，约 1-2 分钟）");
+        // FR-101-PROBE-011：无头自动化——adb shell am start -n org.fellow99.nodeprobe/.MainActivity
+        // --ez autorun true 即自动跑批（便于 CI/脚本 am start + run-as pull 报告，免点击）
+        if (getIntent().getBooleanExtra("autorun", false)) {
+            log("autorun=true：启动即自动跑批");
+            runAll();
+        }
     }
 
     private void log(String s) {
@@ -586,6 +599,29 @@ public class MainActivity extends Activity {
                             : "损坏删除=" + ok + " 损坏后exit=" + broken.exit + " 恢复=" + restored
                                     + " 恢复后exit=" + healed.exit + " " + head(broken.stderr, 120);
                 }));
+        // ── 2026-11-05 修复设计补充探针：TC-INTL-*（引用 docs/20261105-cli-实测问题-修复设计.md，
+        //    §4.1 ① 属性转义 / ② Intl 全 locale = full-icu 判据；§2.1 B1 = error hook）─────────
+        // 判据语义：当前 app/libs/node-cli-release.aar 为 intl=none 首产制品 ⇒ TC-INTL-01/02 预期
+        // FAIL（detail 以 FAIL-ANTICIPATED 标注「待 full-icu CI 重cut 后 PASS」，如实记录不伪造 PASS，
+        // 见 101-probe-app test-cases 禁止判据 2）；TC-INTL-03（B1 注入契约）当前即可 PASS。
+        l.add(new Probe("TC-INTL-01", "JS 属性转义 /\\p{ID_Start}/u（full-icu 判据）", node("-e",
+                        "console.log(/\\p{ID_Start}/u.test('a'))"), null, null, null, 60_000,
+                o -> o.exit == 0 && o.stdout.trim().equals("true") ? null
+                        : "FAIL-ANTICIPATED|待 full-icu CI 重cut 后 PASS；当前 intl=none AAR：exit=" + o.exit
+                                + " " + head(o.stdout + o.stderr, 140) + "（修复设计 §4.1①）"));
+        l.add(new Probe("TC-INTL-02", "Intl 全 locale zh-CN 格式化（full-icu 判据）", node("-e",
+                        "console.log(new Intl.NumberFormat('zh-CN').format(1234))"), null, null, null, 60_000,
+                o -> o.exit == 0 && o.stdout.trim().equals("1,234") ? null
+                        : "FAIL-ANTICIPATED|待 full-icu CI 重cut 后 PASS；当前 intl=none AAR：exit=" + o.exit
+                                + " " + head(o.stdout + o.stderr, 140) + "（修复设计 §4.1②）"));
+        l.add(new Probe("TC-INTL-03", "B1 错误 hook（NODE_OPTIONS=--require → stderr stack + exit1，§2.1）",
+                node("-e", "throw new Error('boom')"),
+                envKv("NODE_OPTIONS", "--require=" + new File(getFilesDir(), "error-hook.js").getAbsolutePath()),
+                null, null, 60_000,
+                o -> o.exit == 1 && o.stderr.contains("boom")
+                        && (o.stderr.contains("Error") || o.stderr.contains("at "))
+                        ? null
+                        : "exit=" + o.exit + " stderr=" + head(o.stderr, 200) + "（B1 契约未达，修复设计 §2.1）"));
         return l;
     }
 
@@ -617,6 +653,15 @@ public class MainActivity extends Activity {
                 try (OutputStream os = new FileOutputStream(new File(getFilesDir(), "m.mjs"))) {
                     os.write("import { join } from 'node:path';\nconsole.log(join('a','b'))\n".getBytes(StandardCharsets.UTF_8));
                 }
+                // TC-INTL-03 前置：error-hook.js（B1，docs/20261105-cli-实测问题-修复设计.md §2.1/§4.1②）：
+                // 挂 uncaughtException/unhandledRejection → stderr stack + exit 1；
+                // 探针经 NODE_OPTIONS=--require=<hook> 注入验证 B1 契约在 CLI 上成立。
+                try (OutputStream os = new FileOutputStream(new File(getFilesDir(), "error-hook.js"))) {
+                    os.write(("process.on('uncaughtException', e => { console.error('SHIM_UNCAUGHT\\n' + (e && e.stack || e)); process.exit(1); });\n"
+                            + "process.on('unhandledRejection', r => { console.error('SHIM_UNHANDLED\\n' + (r && r.stack || r)); process.exit(1); });\n")
+                            .getBytes(StandardCharsets.UTF_8));
+                }
+                log("error-hook.js 已生成（TC-INTL-03 前置，B1）");
                 projDir.mkdirs();
                 new File(homeDir, "lib").mkdirs();   // npm ls -g 前置（npm 11 对缺失全局目录报 ENOENT）
                 File pj = new File(projDir, "package.json");
