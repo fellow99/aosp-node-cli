@@ -1,10 +1,10 @@
 # 规格文档索引 —— `aosp-node-cli`
 
 **项目名称：** `aosp-node-cli`（Maven 坐标 `io.github.fellow99:node-cli`）
-**需求：** **000-scaffold 工程搭建**（模块化扩展：001/002/003/101 已按规划 §10.2 立项）· 规范文档存放目录：`specs/`
+**需求：** **000-scaffold 工程搭建**（模块化扩展：001/002/003/101/101-probe 已按规划 §10.2 立项）· 规范文档存放目录：`specs/`
 **制品版本：** `26.13.0`（**released**——CI run 41471561286 / GitHub Release `v26.13.0`，恒等于配对 Node 版本）
 **技术栈：** Gradle 9.4.1 + AGP 9.2.1（AAR 容器，零 Kotlin/Java 源）+ vanniktech 0.37.0（Central 发布面）+ 纯 Node `.mjs` exec 型 ELF 门禁 + bash 交叉编译脚本（真实编译 ⬜ CI）
-**文档生成时间：** 2026-11-02 · **最后更新：** 2026-11-02（模块 001/002/003/101 立项批次）
+**文档生成时间：** 2026-11-02 · **最后更新：** 2026-11-05（101-probe-app as-built 归档批次 + intl=full-icu 修复设计 §4.1 同步）
 
 > **权威规划文档是 [`../docs/000-工程规划.md`](../docs/000-工程规划.md)（v2.1，§10.2 模块划分）。**
 > 本目录是它的**收敛/展开版**：只做细化与验收，**不复制粘贴**，所有结论回引规划的 §/D/R 号，避免两份文档漂移。
@@ -24,8 +24,9 @@
 | 模块 | 002-building-workflow（流水线，⬜ 本批） | 3 | `spec.md` · `plan.md` · `tasks.md` |
 | 模块 | 003-cli（node CLI 契约，⬜ 已立项） | 4 | `spec.md` · `plan.md` · `tasks.md` · `test-cases.md` |
 | 模块 | 101-npm-integration（npm 集成契约，⬜ 已立项） | 4 | `spec.md` · `plan.md` · `tasks.md` · `test-cases.md` |
+| 模块 | 101-probe-app（设备回程探针载体，⚠️ 已实现） | 4 | `spec.md` · `plan.md` · `tasks.md` · `test-cases.md` |
 | 索引 | 本索引 | 1 | `README.md` |
-| **合计** | **6 目录 / 27 文件** | | 模块目录 5 个，模块文档 18 份 |
+| **合计** | **7 目录 / 31 文件** | | 模块目录 6 个，模块文档 22 份 |
 
 > **刻意不生成** `API.md` / `overall-api.md`：本仓**不含任何嵌入 API / Kotlin / Java 源**，对外契约面是
 > Maven 坐标 + AAR 内容物（jniLibs / assets / META-INF 元数据），见 [`overall-spec.md`](./overall-spec.md) §3 与
@@ -76,7 +77,7 @@
 
 ### 001 — 构建（building）`001-building` ⬜ 本批立项
 
-> 构建本体：node tar.xz fetch + SHASUMS256 校验；无 `--shared` configure + `--with-intl=none` +
+> 构建本体：node tar.xz fetch + SHASUMS256 校验；无 `--shared` configure + `--with-intl=full-icu --with-icu-source=<钉版 icu4c>`（D7 修订 2026-11-05）+
 > 16KB LDFLAGS；make + 形态校验 + strip 改名；npm/corepack 树收集/剪枝/manifest；三壳脚本生成；
 > provision 扩展（`--assets`/`--shims`/兄弟白名单/壳五判据/assets 静态性）。
 
@@ -99,7 +100,7 @@
 
 ### 003 — CLI（node 命令行）`003-cli` ⬜ 已立项（契约冻结）
 
-> node CLI 产品契约：进程/身份/执行/环境/能力边界（Intl=none、Temporal）；探针 P1/P5/P8/P9/P10；
+> node CLI 产品契约：进程/身份/执行/环境/能力边界（Intl 全 locale 可用——D7 修订 /Temporal 不可用）；探针 P1/P5/P8/P9/P10；
 > **主测试用例正典 TC-003-01…21**（device 18 + host 3）。
 
 | 文档 | 链接 | 说明 |
@@ -122,6 +123,20 @@
 | 任务拆解 | [101-npm-integration/tasks.md](./101-npm-integration/tasks.md) | 契约冻结/用例正典/host 支撑/设备侧 M2 窗口 |
 | 测试用例 | [101-npm-integration/test-cases.md](./101-npm-integration/test-cases.md) | **npm 主用例正典**：直出/离线首启/安装链/边界链/corepack 边界 + host 树/壳/manifest/白名单 |
 
+### 101-probe-app — 设备回程探针载体（probe-app）⚠️ 已实现（as-built 归档）
+
+> 独立 Android app 承载 003/101 用例正典的可执行子集：物化（assets→filesDir 幂等）+ 环境注入
+> （规划 §7）+ `/system/bin/sh -c` 包装 exec + PASS/FAIL/BLOCKED JSON 报告；TC-MAT-01（树完整性自检）、
+> TC-003-01…18、TC-101-01…15、TC-INTL-01…03（2026-11-05 修复设计 §4.1/§2.1 新增：属性转义/Intl 全 locale/
+> B1 错误 hook）+ autorun intent（FR-101-PROBE-011）。2026-11-04 跑批 49 探针 = 48 PASS + 1 BLOCKED。
+
+| 文档 | 链接 | 说明 |
+|---|---|---|
+| 功能规格 | [101-probe-app/spec.md](./101-probe-app/spec.md) | FR-101-PROBE-001…011（物化/注入/执行/判据/报告/TC-INTL/无头自动化 五域） |
+| 技术方案 | [101-probe-app/plan.md](./101-probe-app/plan.md) | as-built：真实文件与行数、注入模板、判据形态、构建部署命令、FR 交叉引用 |
+| 任务拆解 | [101-probe-app/tasks.md](./101-probe-app/tasks.md) | T1 建仓 / T2 跑批 / T3 本批补充 / T4 遗留执行项 |
+| 测试用例 | [101-probe-app/test-cases.md](./101-probe-app/test-cases.md) | **探针主用例正典**：TC-MAT-01/TC-003/TC-101/TC-INTL 全表 + 设备判据 + 禁止判据 |
+
 ---
 
 ## 四、模块编号一览
@@ -133,6 +148,7 @@
 | 002 | 构建流水线（building-workflow） | 002-building-workflow | 构建工程 | 规划 §10.2（M1-T6） | ⬜ 本批立项（workflow 代码本批落地） |
 | 003 | CLI（node 命令行） | 003-cli | 产品契约 | 规划 §10.2（M1 产物 + M2-T2 部分） | ⬜ 已立项（契约+用例冻结） |
 | 101 | npm 集成（npm-integration） | 101-npm-integration | 设备侧集成 | 规划 §10.2（M1-T4/T5 部分 + M2-T2 部分） | ⬜ 已立项（契约+用例冻结） |
+| 101 | 探针载体（probe-app） | 101-probe-app | 设备侧集成 | 规划 §10.2（M2-T1/T2） | ⚠️ 已实现（as-built 归档；2026-11-04 跑批；原生 arm64 复测 ⬜） |
 
 > 编号约定：`0NN` = 构建工程/产品域（000–003），`1NN` = 设备侧集成域（101 起）。
 > v2.0 期「只有 000 一个需求编号、不预设 001+ 目录」的口径已由规划 v2.1 §10.2 取代——
@@ -167,7 +183,7 @@
 | **架构师 / Tech Lead** | `ARCHITECTURE.md` → `TECH.md` → `overall-plan.md` → 规划 §3.1 决策表（D1–D8） |
 | **构建/流水线实现者（M1）** | `001-building/plan.md` → `002-building-workflow/plan.md` → 规划 §4/§6/§9 → 各自 `tasks.md` → `overall-test-cases.md` §2.5 |
 | **消费方（接入 AAR）** | 仓库根 [`README_zh.md`](../README_zh.md)（或 [README.md](../README.md)）→ `overall-spec.md` §3.3 边界 → `ARCHITECTURE.md` §③ → `003-cli/plan.md` §3（env 模板） |
-| **测试 / QA** | `overall-test-cases.md` → `003-cli/test-cases.md` → `101-npm-integration/test-cases.md` → `000-scaffold/test-cases.md` → `SPECS_CHECKLIST.md` §五 |
+| **测试 / QA** | `overall-test-cases.md` → `003-cli/test-cases.md` → `101-npm-integration/test-cases.md` → `101-probe-app/test-cases.md` → `000-scaffold/test-cases.md` → `SPECS_CHECKLIST.md` §五 |
 | **合规 / 发布** | `constitution.md` C6 → `overall-plan.md` §6 → 规划 §10.1/§12 |
 
 ### 快照命令（先看证据，再看结论）

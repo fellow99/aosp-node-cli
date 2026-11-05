@@ -91,7 +91,7 @@ push/PR runs the configuration gate only).
 # 1) Fetch source: official node-v<ver>.tar.xz + SHASUMS256.txt verification chain, unmodified
 node scripts/fetch-node-cli-source.mjs --node 26.13.0 --out .dist/src
 
-# 2) Cross-compile: android_configure WITHOUT --shared + --with-intl=none → make → gates → strip
+# 2) Cross-compile: android_configure WITHOUT --shared + --with-intl=full-icu (fetched, pinned ICU source) → make → gates → strip
 #    → npm/corepack tree collection/pruning/manifest → shell shims (--dry-run prints the plan)
 bash scripts/build-node-cli-android.sh --node 26.13.0 --api 24 \
   --src .dist/src/node-src --ndk "$ANDROID_NDK_HOME" --out .dist/out

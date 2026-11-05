@@ -86,7 +86,7 @@ assets/node-bridge-tools/manifest.json   # 逐文件 sha256 + 总摘要（投放
 # 1) 取源：官方 node-v<ver>.tar.xz + SHASUMS256.txt 官方校验链，不改源
 node scripts/fetch-node-cli-source.mjs --node 26.13.0 --out .dist/src
 
-# 2) 交叉编译：不带 --shared 的 android_configure + --with-intl=none → make → 门禁 → strip
+# 2) 交叉编译：不带 --shared 的 android_configure + --with-intl=full-icu（钉版 ICU 数据源）→ make → 门禁 → strip
 #    → npm/corepack 树收集/剪枝/manifest → 三壳脚本（--dry-run 只打印计划）
 bash scripts/build-node-cli-android.sh --node 26.13.0 --api 24 \
   --src .dist/src/node-src --ndk "$ANDROID_NDK_HOME" --out .dist/out

@@ -122,7 +122,11 @@ aosp-node-cli/
 2. **README_zh.md「AAR 内容」小节与规划 v2.0 有出入**：只列了 `libnode_cli.so` + `assets/node-bridge-tools/npm|corepack`，未列壳脚本 `libnpm/libnpx/libcorepack.so` 与 `manifest.json`（规划 §5 已明文登记 ⚠️，回写列为 M1 文档项）。
 3. **`gradle.properties` 的 `VERSION_NAME=0.1.0` 与实际发布版本（`CLI_VERSION=26.13.0`）并存**：生效版本由 `coordinates(...)` + `afterEvaluate` 反射覆写双写为 `CLI_VERSION`；`VERSION_NAME` 在本仓源码中无任何读取点（其消费只可能发生在 vanniktech 插件 `pomFromGradleProperties` 内部）⬜ 未核实——评审时应确认它不会把 POM 版本带回 0.1.0。
 4. **CI 的退出码断言在 `bash -e` 下可能是死代码**：workflow 的 `provision --check` 期望退出码 2，但 GitHub Actions 默认 `bash -e` 会让 `exit 2` 直接终止该 step，`code=$?` 与后续 if 分支大概率不会执行（详见 `overall-plan.md` §4.1 ⚠️）。建议改用 `node tools/provision.mjs --check || code=$?` 捕获。
-5. **`scripts/build-node-cli-android.sh:10` 的头注释与规划 D7 不一致**：注释写「`--with-intl=none`（体积口径，**与 runtime 一致**）」，而规划 §3.2/D7 明文「Intl=none 与 runtime 的 small-icu 为**有意分歧**（CLI 不带 ICU 数据，如实登记）」。⇒ 该注释属事实性错误，M1 实现该脚本时应一并改正（本 specs 只登记，不改 spec 目录外文件）。
+5. **`scripts/build-node-cli-android.sh:8-10` 头注释（✅ 2026-11-05 已修复）**：原注释「`--with-intl=none`
+   （体积口径，**与 runtime 一致**）」与规划 D7「Intl=none 与 runtime 的 small-icu 为**有意分歧**」
+   不符——属事实性错误。2026-11-05 修复设计 §4.1 已把 intl 从 none 改 **full-icu**（--with-icu-source
+   钉版 icu4c），脚本注释、configure 参数、BUILD-METADATA、lock `builtFrom.flags`/`sources.icu` 与
+   规划 D7/§7/§8/R2/R4/R10 已一并修订为 full-icu 口径（原 intl=none「有意分歧」作废）。
 
 ---
 
