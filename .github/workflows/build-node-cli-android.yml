@@ -217,7 +217,7 @@ jobs:
       - name: Fetch node source（单源 + SHASUMS256 官方校验链，FR-001-001…003）
         run: node scripts/fetch-node-cli-source.mjs --node "$NODE_VERSION" --out "$DIST/src"
 
-      - name: Build（001 十步：configure 无 --shared + intl=none + 16KB → make → 门禁 → strip
+      - name: Build（001 十步：configure 无 --shared + intl=full-icu（--with-icu-source 钉版 icu4c）+ 16KB → make → 门禁 → strip
           → 树收集/剪枝/manifest → 三壳 → 元数据；FR-001-010…023）
         env:
           APPLY_PATCHES_INPUT: ${{ github.event.inputs.apply_patches }}
