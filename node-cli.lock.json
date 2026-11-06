@@ -1,5 +1,5 @@
 {
-  "$comment": "node-cli single source of truth: version = paired Node version (mirrors aosp-node-runtime). Binaries are NOT committed; CI builds libnode_cli.so and tools/provision.mjs deploys it. RE-CUT v2.3.1 (static libc++, 2026-11-03): re-opened DRAFT pending the re-cut CI build. 2026-11-05: intl switches none -> full-icu (fix design docs/20261105-cli-实测问题-修复设计.md §4.1) with --with-icu-source fed from sources.icu; DRAFT placeholder still applies: size/sha256/icu-sha are re-pinned by the first full-icu CI build and written back here. See docs/000-工程规划.md.",
+  "$comment": "node-cli single source of truth: version = paired Node version (mirrors aosp-node-runtime). Binaries are NOT committed; CI builds libnode_cli.so and tools/provision.mjs deploys it. 2026-11-05: intl switches none -> full-icu (fix design docs/20261105-cli-实测问题-修复设计.md §4.1) with --with-icu-source fed from sources.icu; first full-icu re-cut landed in CI run 42157255884 (2026-11-06): size/sha256 written back and released, ICU source sha verified by the successful fetch+build. See docs/000-工程规划.md.",
   "active": {
     "version": "26.13.0",
     "abi": "arm64-v8a"
@@ -10,8 +10,8 @@
       "abi": "arm64-v8a",
       "androidApi": 24,
       "name": "libnode_cli.so",
-      "size": 62155912,
-      "sha256": "eb51b439d2a8164bc2e4be233b9a363b6def736a000feb432ce72702ee28b86c",
+      "size": 100037408,
+      "sha256": "ac5911ef9b476e8c590d723e8ef698e9050f06dddb67aac28e0daf84b570bdd8",
       "pairedRuntime": {
         "coordinates": "io.github.fellow99:node-runtime:26.13.0",
         "releaseTag": "v26.13.0"
@@ -22,9 +22,9 @@
           "url": "https://nodejs.org/dist/v26.13.0/node-v26.13.0.tar.xz",
           "sha256": "263f639ecfa7a17b49438d76cdbf9aff73179e3c7cb789da69b900718427fa2e"
         },
-        "ndk": "30.0.16248370 (NDK r30; CI run 41471561286 / tag v26.13.0)",
-        "flags": "direct ./configure (replicates android_configure env) WITHOUT --shared (D2): --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=full-icu --with-icu-source=<.dist/src/icu-src> --v8-disable-temporal-support; CXX += -static-libstdc++ (v2.3.1: self-contained, no libc++_shared needed); 16KB = NDK r28+ default verified by gate 7; llvm-strip --strip-unneeded",
-        "patch": "trap-handler,cpu-features (CI run 41471561286; cc-host via env injection; temporal disabled via configure flag)",
+        "ndk": "30.0.16248370 (NDK r30; CI run 42157255884 full-icu re-cut 2026-11-06)",
+        "flags": "direct ./configure (replicates android_configure env) WITHOUT --shared (D2): --dest-cpu=arm64 --dest-os=android --openssl-no-asm --cross-compiling --with-intl=full-icu --with-icu-source=<.dist/src/icu-src> --v8-disable-temporal-support; CC_host/CXX_host via env; CXX += -static-libstdc++ (v2.3.1: self-contained, no libc++_shared needed); 16KB = NDK r28+ default verified by gate 7; llvm-strip --strip-unneeded",
+        "patch": "trap-handler,cpu-features (cc-host via env injection; temporal disabled via configure flag)",
         "npm": {
           "version": "11.20.0",
           "path": "deps/npm",
