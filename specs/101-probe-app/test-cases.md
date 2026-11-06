@@ -105,3 +105,13 @@
 - 报告：`logs/20261105-1/report-node.json`（工程内留档，不入库）。
 - 汇总：52 探针：PASS 49 / BLOCKED 1 / FAIL 2（TC-INTL-01/02 为 FAIL-ANTICIPATED，待 full-icu CI 重 cut；TC-003-18 PTY-terminal BLOCKED）。
 - 判读纪律：翻译模拟器结果**仅记录**，正式 G3 需原生 arm64 复测；FAIL/BLOCKED 均按本节/Spec 既有分类如实记录，未伪造 PASS。
+
+## 附、full-icu strict CI 验证记录（2026-11-06）
+
+- 载体：GitHub Actions run 42181922283（workflow_dispatch，head=e60fffe，strict 模式——dispatch 未带
+  lock_writeback_tolerance，LOCK_GATE 为空 ⇒ ⑤SHA/⑥size 硬判）。
+- 结果：全 job success；Provision 步 ⑦ 项门禁全过，实测 ✅ ⑤ SHA-256 与锁一致
+  （ac5911ef9b476e8c…）✅ ⑥ 大小与锁一致（100037408 B）——与 run 42157255884 回写值完全吻合。
+- 意义：TC-INTL-01/02 的「待 full-icu CI 重 cut」前置已解除——full-icu 制品（libnode_cli.so
+  sha ac5911ef…，--with-intl=full-icu + 钉版 icu4c 78.3）已由 strict CI 确认并锁定；
+  设备侧重跑 TC-INTL-01/02/03 属 G3 原生 arm64 复测项（⬜，见上 判读纪律）。
