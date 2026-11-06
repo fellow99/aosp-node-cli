@@ -20,9 +20,9 @@ node-bridge-workspace doc `docs/aosp+node+python+git运行方案.md`.
 The artifact version **always equals** the paired Node.js / `aosp-node-runtime` version —
 the same pairing discipline as node-pty, no independent semver.
 
-| Paired runtime | This repo (draft) |
+| Paired runtime | This repo |
 |---|---|
-| `io.github.fellow99:node-runtime:26.13.0` | `io.github.fellow99:node-cli:26.13.0` (status=draft; facts written back after the first CI build) |
+| `io.github.fellow99:node-runtime:26.13.0` | `io.github.fellow99:node-cli:26.13.0` (lock status=released; full-icu re-cut CI run 42157255884 wrote back size/sha) |
 
 > ⚠️ **AArch64 (arm64-v8a) only** — no x86 / x86_64 / arm32 packages.
 
@@ -30,7 +30,7 @@ the same pairing discipline as node-pty, no independent semver.
 
 | Version | Status | Link |
 |---|---|---|
-| 26.13.0 | ⬜ draft (published after the first M1 build) | — |
+| 26.13.0 | ⬜ not on Maven Central yet (CI artifact ready; Release runs on the tag pipeline) | — |
 
 ## Usage (consumers)
 
@@ -106,7 +106,7 @@ node tools/provision.mjs --check
 ## Lock & verification
 
 [`node-cli.lock.json`](node-cli.lock.json) is the single source of truth for version, size,
-SHA-256, exec gates and provenance (currently status=draft).
+SHA-256, exec gates and provenance (currently status=released).
 
 ```bash
 node tools/provision.mjs --check          # verify the provisioned artifact
@@ -116,8 +116,25 @@ node tools/provision.mjs --inspect <so>   # print the exec gate report for a bin
 Exit codes: `0` all gates pass · `2` gate failure / not provisioned · `1` usage/IO error.
 
 Gates: `ET_DYN` (PIE), **PT_INTERP=/system/bin/linker64**, AArch64, **DT_NEEDED whitelist**,
-16KB page alignment, sha/size match (recorded only while draft).
+16KB page alignment, sha/size match.
 
+
+## Capability boundaries / known limits
+
+The following are **measured facts** (wording per workspace
+`docs/20261105-cli-实测问题-修复设计.md` §4.3); consumers must know them before integrating:
+
+- **Uncaught exceptions / syntax-error messages go to logcat (tag=`nodejs`) by default, with an
+  empty stderr** — this is an exec-form CLI platform fact on Android, not a defect of this AAR.
+  With an environment bootstrap layer (B1: PTY allocation / standard-stream takeover), **JS-level
+  errors** become readable on stderr with exit code 1.
+- **Native fatal errors (native crash / OOM, etc.) still never reach stderr** — rely on the exit
+  code plus logcat; auto-merge would require the harness to capture the logcat `nodejs` tag on
+  non-zero exit (fix design §6 B3 follow-up, not implemented in this round).
+- **Intl is a full-icu build** (`--with-intl=full-icu` with a pinned icu4c source, fix design
+  §4.1): `\p{...}` Unicode property escapes and full locales (e.g.
+  `Intl.NumberFormat('zh-CN')`) work out of the box without `NODE_ICU_DATA`; the trade-off is a
+  substantially larger binary (see the measured size in the lock).
 ## Repository layout
 
 ```

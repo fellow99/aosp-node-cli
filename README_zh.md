@@ -17,9 +17,9 @@ ELF 门禁与发布流水线。它是 [`aosp-node-runtime`](https://github.com/f
 制品版本**始终等于**所配对的 Node.js / `aosp-node-runtime` 版本，与 node-pty 同一配对纪律，
 不引入独立 semver。
 
-| 配对 runtime | 本仓（draft） |
+| 配对 runtime | 本仓 |
 |---|---|
-| `io.github.fellow99:node-runtime:26.13.0` | `io.github.fellow99:node-cli:26.13.0`（status=draft，首发 CI 构建后回写事实） |
+| `io.github.fellow99:node-runtime:26.13.0` | `io.github.fellow99:node-cli:26.13.0`（lock status=released；full-icu 首切 CI run 42157255884 已回写 size/sha） |
 
 > ⚠️ **只发布 AArch64（arm64-v8a）一个架构**。
 
@@ -27,7 +27,7 @@ ELF 门禁与发布流水线。它是 [`aosp-node-runtime`](https://github.com/f
 
 | 版本 | 状态 | 链接 |
 |---|---|---|
-| 26.13.0 | ⬜ draft（M1 首产后发布） | — |
+| 26.13.0 | ⬜ 未发布 Maven Central（CI 产物已就绪，Release 走 tag 流水线） | — |
 
 ## 用法（消费方）
 
@@ -101,7 +101,7 @@ node tools/provision.mjs --check
 ## 锁定与校验
 
 [`node-cli.lock.json`](node-cli.lock.json) 是版本、大小、SHA-256、exec 门禁与出处的唯一事实源
-（当前 status=draft）。
+（当前 status=released）。
 
 ```bash
 node tools/provision.mjs --check          # 校验已投放产物
@@ -111,8 +111,22 @@ node tools/provision.mjs --inspect <so>   # 打印某个二进制的 exec 门禁
 退出码：`0` 全过 · `2` 门禁不合格/未投放 · `1` 用法/IO 错误。
 
 门禁：`ET_DYN`（PIE）、**PT_INTERP=/system/bin/linker64**、AArch64、**DT_NEEDED 白名单**、
-16KB 页对齐、sha/size 一致（draft 时仅记录）。
+16KB 页对齐、sha/size 一致。
 
+
+## 能力边界 / 已知限制
+
+以下均为**实测事实**（口径来源：工作区 `docs/20261105-cli-实测问题-修复设计.md` §4.3），
+消费方集成前必须知悉：
+
+- **未捕获异常 / 语法错误的文案默认走 logcat（tag=`nodejs`），stderr 为空**——这是 exec 型 CLI
+  在 Android 平台的事实，非本 AAR 缺陷。经环境引导层（B1：分配 PTY/接管标准流）后，**JS 级错误**
+  可在 stderr 读到 stack、退出码为 1。
+- **原生致命错误（native crash / OOM 等）仍不出现在 stderr**——只能依赖退出码 + logcat 捕获；
+  若需自动拼回，由 harness 在退出码非 0 时抓取 logcat `nodejs` 标签（修复设计 §6 B3 后续项，本轮不实施）。
+- **Intl 为 full-icu 全量构建**（`--with-intl=full-icu` + 钉版 icu4c 数据源，修复设计 §4.1）：
+  `\p{...}` Unicode 属性转义与全 locale（如 `Intl.NumberFormat('zh-CN')`）开箱可用，无需
+  `NODE_ICU_DATA`；代价是主件体积显著增大（见 lock 实测 size）。
 ## 仓库结构
 
 ```
