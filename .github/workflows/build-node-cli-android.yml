@@ -9,7 +9,7 @@ name: CI — aosp-node-cli
 # 纪律：
 #   - 「预期非零退出」的自检一律先捕获后断言（`cmd || code=$?` 再断言）——修复 000 登记的
 #     `bash -e` 断言分支不可达缺陷（FR-002-004）；
-#   - 不设 timeout-minutes：冷 V8 交叉编译可数小时（runtime 同款经验，6h 平台上限）；
+#   - timeout-minutes: 300（5h）：冷 V8 交叉编译可超 3h，2026-11-06 起显式设置（原不设超时依赖 6h 平台上限）；
 #   - 16GB swapfile：V8 host snapshot 编译峰值可超 runner 16GB RAM；
 #   - 凭据不入日志；RELEASE 类敏感参数不出现在 push 路径（FR-002-009）。
 
@@ -141,7 +141,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: config-check
     runs-on: ubuntu-24.04
-    # 不设 timeout-minutes：冷 V8 交叉编译可数小时（规划 §9）
+    timeout-minutes: 300   # 5h（用户要求 2026-11-06：冷 V8 交叉编译可超 3h）
     permissions:
       contents: write
     steps:
