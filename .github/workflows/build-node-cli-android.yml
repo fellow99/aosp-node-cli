@@ -36,6 +36,10 @@ on:
         description: 'Patch ids (empty = bare configure, R1 attribution path; default: trap-handler,cpu-features)'
         required: false
         default: 'trap-handler,cpu-features'
+      lock_writeback_tolerance:
+        description: '''true'' = 门禁⑤SHA/⑥size 与 lock 不一致仅记录放行（full-icu 采纳首次回写流 FR-002-007，产出 lock-writeback PR 底稿）；①②③④⑦ 结构门禁仍硬判。默认空 = strict 硬判。'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -44,6 +48,7 @@ env:
   # NDK 钉版单点（规划 §3.2/§4.1：与 aosp-node-runtime 对齐 r30 线；⬜ 首跑核对后回写 lock）
   NDK_VERSION: '30.0.16248370'
   DIST: .dist
+  LOCK_GATE: ${{ github.event.inputs.lock_writeback_tolerance == 'true' && 'writeback' || '' }}
 
 jobs:
   # ── Job 1：配置期门禁（000-scaffold 语义保留 + 002 增强）──────────────────

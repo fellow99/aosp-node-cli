@@ -183,9 +183,18 @@ function gates(buf, rel, allowedNeeded) {
 
   const allow4k = has('--allow-page-align-4k');
   const gateAlign = r.find((x) => x.id.startsWith('⑦'));
-  const hardOk = r.every((x) => (allow4k && x === gateAlign ? true : x.ok));
+  // LOCK_GATE=writeback：⑤SHA/⑥size 与 lock 不一致仅记录放行（full-icu 采纳首次回写流 FR-002-007；
+  // ① ② ③ ④ ⑦ 结构门禁仍硬判；正常 strict 流不受影响）。
+  const writeback = process.env.LOCK_GATE === 'writeback';
+  const hardOk = r.every((x) =>
+    (allow4k && x === gateAlign) || (writeback && (x.id.startsWith('⑤') || x.id.startsWith('⑥'))) ? true : x.ok);
   if (allow4k && gateAlign && !gateAlign.ok) {
     say('⚠ --allow-page-align-4k 放行「16 KB 页对齐」：仅 bring-up，上架/16 KB 设备不合格');
+  }
+  if (writeback && !hardOk) {
+    say('ⓦ LOCK_GATE=writeback：存在结构门禁（①②③④⑦）未过——回写流不放行结构缺陷');
+  } else if (writeback) {
+    say('ⓦ LOCK_GATE=writeback：⑤SHA/⑥size 已按记录性处理（full-icu 首次采纳，FR-002-007 回写流）');
   }
   return { ok: hardOk, results: r, elf, sha256 };
 }
